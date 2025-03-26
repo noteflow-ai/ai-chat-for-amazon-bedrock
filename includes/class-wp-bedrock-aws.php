@@ -155,7 +155,7 @@ class WP_Bedrock_AWS {
         $date_stamp = gmdate('Ymd');
         
         // Step 1: Create a canonical request
-        $canonical_uri = '/model/' . $model_id . '/invoke';
+        $canonical_uri = '/model/' . urlencode($model_id) . '/invoke';
         $canonical_querystring = '';
         $canonical_headers = "content-type:application/json\nhost:" . $host . "\nx-amz-date:" . $amz_date . "\n";
         $signed_headers = 'content-type;host;x-amz-date';
@@ -184,7 +184,8 @@ class WP_Bedrock_AWS {
             'headers' => [
                 'Content-Type' => 'application/json',
                 'X-Amz-Date' => $amz_date,
-                'Authorization' => $authorization_header
+                'Authorization' => $authorization_header,
+                'X-Amz-Content-Sha256' => $payload_hash
             ],
             'body' => $request_json,
             'timeout' => 30
