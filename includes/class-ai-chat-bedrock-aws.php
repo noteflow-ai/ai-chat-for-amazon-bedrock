@@ -212,14 +212,20 @@ class AI_Chat_Bedrock_AWS {
 				) );
 			}
 			
-			$payload['anthropic_version'] = 'bedrock-2023-05-31';
+			// 根据Claude版本选择不同的API版本
+			if ( strpos( $model_id, 'claude-3.5' ) !== false || strpos( $model_id, 'claude-3.7' ) !== false ) {
+				$payload['anthropic_version'] = 'bedrock-2023-05-31';
+			} else {
+				$payload['anthropic_version'] = 'bedrock-2023-05-31';
+			}
+			
 			$payload['messages'] = $formatted_messages;
 			
 			if ( $this->debug ) {
 				$this->log_debug( 'Formatted Claude Messages:', $formatted_messages );
 			}
 			
-		} elseif ( strpos( $model_id, 'amazon.titan' ) !== false ) {
+		} elseif ( strpos( $model_id, 'amazon.titan' ) !== false || strpos( $model_id, 'amazon.nova' ) !== false ) {
 			// Titan format
 			$prompt = '';
 			foreach ( $messages as $message ) {
@@ -250,6 +256,38 @@ class AI_Chat_Bedrock_AWS {
 			$prompt .= "Assistant: ";
 			
 			$payload['prompt'] = $prompt;
+		} elseif ( strpos( $model_id, 'deepseek' ) !== false ) {
+			// DeepSeek R1 format
+			$formatted_messages = array();
+			
+			// 查找系统消息
+			$system_content = '';
+			foreach ( $messages as $key => $message ) {
+				if ( $message['role'] === 'system' ) {
+					$system_content = $message['content'];
+					break;
+				}
+			}
+			
+			// 如果有系统消息，添加到格式化消息中
+			if ( !empty( $system_content ) ) {
+				$formatted_messages[] = array(
+					'role' => 'system',
+					'content' => $system_content,
+				);
+			}
+			
+			// 添加其他消息
+			foreach ( $messages as $message ) {
+				if ( $message['role'] !== 'system' ) {
+					$formatted_messages[] = array(
+						'role' => $message['role'],
+						'content' => $message['content'],
+					);
+				}
+			}
+			
+			$payload['messages'] = $formatted_messages;
 		}
 		
 		return $payload;
@@ -853,7 +891,7 @@ class AI_Chat_Bedrock_AWS {
 				$content = $response_data['results'][0]['outputText'];
 			}
 		} else if ( strpos( $model_id, 'claude' ) !== false ) {
-			// Handle Claude model response format
+			// Handle Claude model response format (包括Claude 3.5和Claude 3.7)
 			if ( isset( $response_data['content'] ) && is_array( $response_data['content'] ) ) {
 				foreach ( $response_data['content'] as $content_block ) {
 					if ( isset( $content_block['type'] ) && $content_block['type'] === 'text' && isset( $content_block['text'] ) ) {
@@ -864,6 +902,15 @@ class AI_Chat_Bedrock_AWS {
 				if ( $this->debug ) {
 					$this->log_debug( 'Extracted content from Claude response:', $content );
 				}
+			}
+		} else if ( strpos( $model_id, 'deepseek' ) !== false ) {
+			// Handle DeepSeek R1 model response format
+			if ( isset( $response_data['choices'][0]['message']['content'] ) ) {
+				$content = $response_data['choices'][0]['message']['content'];
+			} else if ( isset( $response_data['output'] ) && is_string( $response_data['output'] ) ) {
+				$content = $response_data['output'];
+			} else if ( isset( $response_data['response'] ) ) {
+				$content = $response_data['response'];
 			}
 		} else {
 			// Handle other response formats

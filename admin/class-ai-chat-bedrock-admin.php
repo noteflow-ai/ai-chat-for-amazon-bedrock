@@ -366,11 +366,41 @@ class AI_Chat_Bedrock_Admin {
 		$value = isset( $options['model_id'] ) ? $options['model_id'] : 'anthropic.claude-3-sonnet-20240229-v1:0';
 		?>
 		<select name="ai_chat_bedrock_settings[model_id]">
-			<option value="anthropic.claude-3-sonnet-20240229-v1:0" <?php selected( $value, 'anthropic.claude-3-sonnet-20240229-v1:0' ); ?>>Claude 3 Sonnet</option>
-			<option value="anthropic.claude-3-haiku-20240307-v1:0" <?php selected( $value, 'anthropic.claude-3-haiku-20240307-v1:0' ); ?>>Claude 3 Haiku</option>
-			<option value="anthropic.claude-instant-v1" <?php selected( $value, 'anthropic.claude-instant-v1' ); ?>>Claude Instant</option>
-			<option value="amazon.titan-text-express-v1" <?php selected( $value, 'amazon.titan-text-express-v1' ); ?>>Amazon Titan Text Express</option>
-			<option value="meta.llama2-13b-chat-v1" <?php selected( $value, 'meta.llama2-13b-chat-v1' ); ?>>Meta Llama 2 13B</option>
+			<!-- Claude Models -->
+			<optgroup label="Claude Models">
+				<option value="anthropic.claude-3-sonnet-20240229-v1:0" <?php selected( $value, 'anthropic.claude-3-sonnet-20240229-v1:0' ); ?>>Claude 3 Sonnet</option>
+				<option value="anthropic.claude-3-haiku-20240307-v1:0" <?php selected( $value, 'anthropic.claude-3-haiku-20240307-v1:0' ); ?>>Claude 3 Haiku</option>
+				<option value="anthropic.claude-3-opus-20240229-v1:0" <?php selected( $value, 'anthropic.claude-3-opus-20240229-v1:0' ); ?>>Claude 3 Opus</option>
+				<option value="us.anthropic.claude-3-5-sonnet-20241022-v2:0" <?php selected( $value, 'us.anthropic.claude-3-5-sonnet-20241022-v2:0' ); ?>>Claude 3.5 Sonnet</option>
+				<option value="us.anthropic.claude-3-7-sonnet-20250219-v1:0" <?php selected( $value, 'us.anthropic.claude-3-7-sonnet-20250219-v1:0' ); ?>>Claude 3.7 Sonnet</option>
+				
+			</optgroup>
+			
+			<!-- Amazon Models -->
+			<optgroup label="Amazon Models">
+				<option value="amazon.titan-text-express-v1" <?php selected( $value, 'amazon.titan-text-express-v1' ); ?>>Amazon Titan Text Express</option>
+				<option value="amazon.titan-text-premier-v1:0" <?php selected( $value, 'amazon.titan-text-premier-v1:0' ); ?>>Amazon Titan Text Premier</option>
+				<option value="amazon.nova-text-v1:0" <?php selected( $value, 'amazon.nova-text-v1:0' ); ?>>Amazon Nova Text</option>
+			</optgroup>
+			
+			<!-- Meta Models -->
+			<optgroup label="Meta Models">
+				<option value="meta.llama2-13b-chat-v1" <?php selected( $value, 'meta.llama2-13b-chat-v1' ); ?>>Meta Llama 2 13B</option>
+				<option value="meta.llama2-70b-chat-v1" <?php selected( $value, 'meta.llama2-70b-chat-v1' ); ?>>Meta Llama 2 70B</option>
+				<option value="meta.llama3-8b-instruct-v1:0" <?php selected( $value, 'meta.llama3-8b-instruct-v1:0' ); ?>>Meta Llama 3 8B</option>
+				<option value="meta.llama3-70b-instruct-v1:0" <?php selected( $value, 'meta.llama3-70b-instruct-v1:0' ); ?>>Meta Llama 3 70B</option>
+			</optgroup>
+			
+			<!-- Mistral Models -->
+			<optgroup label="Mistral Models">
+				<option value="mistral.mistral-7b-instruct-v0:2" <?php selected( $value, 'mistral.mistral-7b-instruct-v0:2' ); ?>>Mistral 7B</option>
+				<option value="mistral.mixtral-8x7b-instruct-v0:1" <?php selected( $value, 'mistral.mixtral-8x7b-instruct-v0:1' ); ?>>Mistral Mixtral 8x7B</option>
+			</optgroup>
+			
+			<!-- DeepSeek Models -->
+			<optgroup label="DeepSeek Models">
+				<option value="us.deepseek.r1-v1:0" <?php selected( $value, 'us.deepseek.r1-v1:0' ); ?>>DeepSeek R1</option>
+			</optgroup>
 		</select>
 		<p class="description"><?php esc_html_e( 'Select the Amazon Bedrock model to use for chat.', 'ai-chat-bedrock' ); ?></p>
 		<?php
