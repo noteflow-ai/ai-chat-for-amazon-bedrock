@@ -236,25 +236,13 @@
 					let responseContent = '';
 					let hasStarted = false;
 					
-					// 创建一个打字机效果队列
-					let typewriterQueue = [];
-					let isTyping = false;
-					
-					// 打字机效果函数
-					function typeNextCharacter() {
-						if (typewriterQueue.length === 0) {
-							isTyping = false;
-							return;
-						}
-						
-						isTyping = true;
-						const nextChar = typewriterQueue.shift();
-						
+					// 直接显示流式内容，不使用打字机效果
+					function appendStreamContent(text) {
 						// 获取当前正在流式显示的消息元素
 						const $lastMessage = $messagesContainer.find('.ai-chat-bedrock-message.streaming-message .ai-chat-bedrock-message-content');
 						if ($lastMessage.length) {
-							// 添加字符到消息内容
-							responseContent += nextChar;
+							// 添加内容到消息
+							responseContent += text;
 							$lastMessage.html(formatMessage(responseContent));
 							scrollToBottom();
 							
@@ -262,22 +250,6 @@
 							if (chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'assistant') {
 								chatHistory[chatHistory.length - 1].content = responseContent;
 							}
-							
-							// 设置下一个字符的延迟
-							setTimeout(typeNextCharacter, 10); // 调整速度，数值越小越快
-						} else {
-							isTyping = false;
-						}
-					}
-					
-					// 添加字符到打字机队列
-					function addToTypewriterQueue(text) {
-						for (let i = 0; i < text.length; i++) {
-							typewriterQueue.push(text[i]);
-						}
-						
-						if (!isTyping) {
-							typeNextCharacter();
 						}
 					}
 					
@@ -433,8 +405,8 @@
 									chatHistory.push({ role: 'assistant', content: '' });
 								}
 								
-								// 添加内容到打字机队列
-								addToTypewriterQueue(contentToAdd);
+								// 直接添加内容到流式消息
+								appendStreamContent(contentToAdd);
 							}
 						} catch (error) {
 							console.error('Error parsing streaming response:', error, event.data);
