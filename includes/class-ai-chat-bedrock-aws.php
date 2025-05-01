@@ -88,11 +88,48 @@ class AI_Chat_Bedrock_AWS {
 		// Format the message based on the model
 		$payload = $this->format_payload_for_model( $model_id, $message_data, $max_tokens, $temperature );
 		
+		// 根据后台设置决定是否使用流式处理
 		if ( $enable_streaming && isset( $message_data['streaming_callback'] ) ) {
-			return $this->invoke_model( $payload, $model_id, true, $message_data['streaming_callback'] );
+			// 使用流式处理
+			$this->log_debug( 'Using streaming mode', '' );
+			
+			// 获取流式处理的端点
+			$endpoint = $this->get_bedrock_endpoint( $this->region, $model_id, true );
+			
+			// 调用流式处理API
+			return $this->invoke_streaming_model( $payload, $model_id, $endpoint, $message_data['streaming_callback'] );
 		} else {
-			return $this->invoke_model( $payload, $model_id, false );
+			// 使用非流式处理
+			$this->log_debug( 'Using non-streaming mode', '' );
+			
+			// 获取非流式处理的端点
+			$endpoint = $this->get_bedrock_endpoint( $this->region, $model_id, false );
+			
+			// 调用非流式处理API
+			return $this->invoke_model( $payload, $model_id, $endpoint );
 		}
+	}
+	
+	/**
+	 * Get the Bedrock endpoint URL.
+	 *
+	 * @since    1.0.0
+	 * @param    string    $region         The AWS region.
+	 * @param    string    $model_id       The model ID.
+	 * @param    bool      $should_stream  Whether to use streaming.
+	 * @return   string                    The endpoint URL.
+	 */
+	private function get_bedrock_endpoint( $region, $model_id, $should_stream ) {
+		if ( empty( $region ) || empty( $model_id ) ) {
+			throw new Exception( 'Region and model ID are required for Bedrock endpoint' );
+		}
+		
+		$base_endpoint = "https://bedrock-runtime.{$region}.amazonaws.com";
+		$endpoint = $should_stream ? 
+			"{$base_endpoint}/model/{$model_id}/invoke-with-response-stream" : 
+			"{$base_endpoint}/model/{$model_id}/invoke";
+		
+		return $endpoint;
 	}
 
 	/**
@@ -265,19 +302,32 @@ class AI_Chat_Bedrock_AWS {
 		return '/' . implode('/', $canonical_segments);
 	}
 
-	private function invoke_model( $payload, $model_id, $is_streaming = false, $stream_callback = null ) {
-		$endpoint = "https://bedrock-runtime.{$this->region}.amazonaws.com";
+	/**
+	 * Invoke the AWS Bedrock model (non-streaming).
+	 *
+	 * @since    1.0.0
+	 * @param    array     $payload           The payload to send.
+	 * @param    string    $model_id          The model ID.
+	 * @param    string    $endpoint          The endpoint URL.
+	 * @return   array                        The response data.
+	 */
+	/**
+	 * Invoke the AWS Bedrock model (non-streaming).
+	 *
+	 * @since    1.0.0
+	 * @param    array     $payload           The payload to send.
+	 * @param    string    $model_id          The model ID.
+	 * @param    string    $endpoint          The endpoint URL.
+	 * @return   array                        The response data.
+	 */
+	private function invoke_model( $payload, $model_id, $endpoint ) {
 		$service = 'bedrock';
-		$host = "bedrock-runtime.{$this->region}.amazonaws.com";
+		$host = parse_url( $endpoint, PHP_URL_HOST );
 		$content_type = 'application/json';
 		
 		// 构建请求路径
-		$request_path = $is_streaming ? 
-			"/model/{$model_id}/invoke-with-response-stream" : 
-			"/model/{$model_id}/invoke";
+		$request_path = parse_url( $endpoint, PHP_URL_PATH );
 		$request_parameters = '';
-		
-		// 不再使用X-Amz-Target头
 		
 		// 直接使用payload作为请求体，不再包装
 		$request_body = json_encode($payload);
@@ -329,29 +379,26 @@ class AI_Chat_Bedrock_AWS {
 		);
 		
 		// Prepare the request
-		$request_url = "{$endpoint}{$request_path}";
-		
 		$args = array(
 			'method' => 'POST',
 			'timeout' => 60,
 			'redirection' => 5,
 			'httpversion' => '1.1',
-			'blocking' => !$is_streaming,
+			'blocking' => true,
 			'headers' => $request_headers,
 			'body' => $request_body,
 			'cookies' => array(),
-			'stream' => $is_streaming,
 		);
 		
 		if ( $this->debug ) {
-			$this->log_debug( 'Request URL:', $request_url );
+			$this->log_debug( 'Request URL:', $endpoint );
 			$this->log_debug( 'Request Headers:', $request_headers );
 			$this->log_debug( 'Request Body:', $request_body );
-			$this->log_debug( 'Payload (before wrapping):', $payload );
+			$this->log_debug( 'Payload:', $payload );
 		}
 		
 		// Make the request
-		$response = wp_remote_post( $request_url, $args );
+		$response = wp_remote_post( $endpoint, $args );
 		
 		if ( is_wp_error( $response ) ) {
 			$error_message = $response->get_error_message();
@@ -364,128 +411,227 @@ class AI_Chat_Bedrock_AWS {
 			);
 		}
 		
-		if ( $is_streaming && $stream_callback ) {
-			return $this->process_stream( $response, $stream_callback );
-		} else {
-			$response_code = wp_remote_retrieve_response_code( $response );
-			$response_body = wp_remote_retrieve_body( $response );
-			
-			if ( $this->debug ) {
-				$this->log_debug( 'Response Code:', $response_code );
-				$this->log_debug( 'Response Body:', $response_body );
-			}
-			
-			if ( $response_code >= 200 && $response_code < 300 ) {
-				$response_data = json_decode( $response_body, true );
-				return $this->parse_model_response( $response_data, $model_id );
-			} else {
-				return array(
-					'success' => false,
-					'data' => array(
-						'message' => "Error: HTTP {$response_code} - {$response_body}",
-					),
-				);
-			}
+		$response_code = wp_remote_retrieve_response_code( $response );
+		$response_body = wp_remote_retrieve_body( $response );
+		
+		if ( $this->debug ) {
+			$this->log_debug( 'Response Code:', $response_code );
+			$this->log_debug( 'Response Body:', $response_body );
 		}
-	}
-
-	/**
-	 * Process a streaming response.
-	 *
-	 * @since    1.0.0
-	 * @param    mixed     $response          The response object.
-	 * @param    callable  $callback          The callback function.
-	 * @return   array                        The response data.
-	 */
-	private function process_stream( $response, $callback ) {
-		if ( !is_resource( $response ) ) {
-			if ( $this->debug ) {
-				$this->log_debug( 'Stream error:', 'Invalid response object provided to process_stream' );
-			}
+		
+		if ( $response_code >= 200 && $response_code < 300 ) {
+			$response_data = json_decode( $response_body, true );
+			return $this->parse_model_response( $response_data, $model_id );
+		} else {
 			return array(
 				'success' => false,
 				'data' => array(
-					'message' => 'Invalid response from server',
+					'message' => "Error: HTTP {$response_code} - {$response_body}",
+				),
+			);
+		}
+	}
+	
+	/**
+	 * Invoke the AWS Bedrock model with streaming.
+	 *
+	 * @since    1.0.0
+	 * @param    array     $payload           The payload to send.
+	 * @param    string    $model_id          The model ID.
+	 * @param    string    $endpoint          The endpoint URL.
+	 * @param    callable  $stream_callback   The streaming callback function.
+	 * @return   array                        The response data.
+	 */
+	private function invoke_streaming_model( $payload, $model_id, $endpoint, $stream_callback ) {
+		$service = 'bedrock';
+		$host = parse_url( $endpoint, PHP_URL_HOST );
+		$content_type = 'application/json';
+		
+		// 构建请求路径
+		$request_path = parse_url( $endpoint, PHP_URL_PATH );
+		$request_parameters = '';
+		
+		// 直接使用payload作为请求体，不再包装
+		$request_body = json_encode($payload);
+		
+		$datetime = new DateTime( 'UTC' );
+		$amz_date = $datetime->format( 'Ymd\THis\Z' );
+		$date_stamp = $datetime->format( 'Ymd' );
+		
+		// 获取规范URI
+		$canonical_uri = $this->get_canonical_uri($request_path);
+		
+		if ( $this->debug ) {
+			$this->log_debug( 'Original Request Path:', $request_path );
+			$this->log_debug( 'Canonical URI:', $canonical_uri );
+		}
+		$canonical_querystring = $request_parameters;
+		$canonical_headers = "content-type:{$content_type}\nhost:{$host}\nx-amz-date:{$amz_date}\n";
+		$signed_headers = 'content-type;host;x-amz-date';
+		$payload_hash = hash( 'sha256', $request_body );
+		$canonical_request = "POST\n{$canonical_uri}\n{$canonical_querystring}\n{$canonical_headers}\n{$signed_headers}\n{$payload_hash}";
+		
+		if ( $this->debug ) {
+			$this->log_debug( 'Canonical Request:', $canonical_request );
+			$this->log_debug( 'Payload Hash:', $payload_hash );
+		}
+		
+		// Create string to sign
+		$algorithm = 'AWS4-HMAC-SHA256';
+		$credential_scope = "{$date_stamp}/{$this->region}/{$service}/aws4_request";
+		$string_to_sign = "{$algorithm}\n{$amz_date}\n{$credential_scope}\n" . hash( 'sha256', $canonical_request );
+		
+		if ( $this->debug ) {
+			$this->log_debug( 'String to Sign:', $string_to_sign );
+			$this->log_debug( 'Credential Scope:', $credential_scope );
+		}
+		
+		// Calculate signature
+		$signing_key = $this->get_signature_key( $this->secret_key, $date_stamp, $this->region, $service );
+		$signature = hash_hmac( 'sha256', $string_to_sign, $signing_key );
+		
+		// Create authorization header
+		$authorization_header = "{$algorithm} " . "Credential={$this->access_key}/{$credential_scope}, " . "SignedHeaders={$signed_headers}, " . "Signature={$signature}";
+		
+		// Create request headers
+		$request_headers = array(
+			'Content-Type' => $content_type,
+			'X-Amz-Date' => $amz_date,
+			'Authorization' => $authorization_header,
+		);
+		
+		// Prepare the request
+		$args = array(
+			'method' => 'POST',
+			'timeout' => 60,
+			'redirection' => 5,
+			'httpversion' => '1.1',
+			'blocking' => true,
+			'headers' => $request_headers,
+			'body' => $request_body,
+			'cookies' => array(),
+		);
+		
+		if ( $this->debug ) {
+			$this->log_debug( 'Streaming Request URL:', $endpoint );
+			$this->log_debug( 'Streaming Request Headers:', $request_headers );
+			$this->log_debug( 'Streaming Request Body:', $request_body );
+			$this->log_debug( 'Streaming Payload:', $payload );
+		}
+		
+		// Make the request
+		$response = wp_remote_post( $endpoint, $args );
+		
+		if ( is_wp_error( $response ) ) {
+			$error_message = $response->get_error_message();
+			$this->log_debug( 'Streaming Request Error:', $error_message );
+			return array(
+				'success' => false,
+				'data' => array(
+					'message' => $error_message,
 				),
 			);
 		}
 		
-		$buffer = '';
-		$complete_response = '';
-		$error_count = 0;
-		$max_errors = 5;
-		
-		while ( !feof( $response ) ) {
-			$chunk = fread( $response, 8192 );
-			if ( $chunk === false ) {
-				$error_count++;
-				if ( $error_count > $max_errors ) {
-					if ( $this->debug ) {
-						$this->log_debug( 'Stream error:', 'Too many read errors, breaking stream' );
-					}
-					break;
-				}
-				continue;
-			}
-			
-			$buffer .= $chunk;
-			
-			// Process complete messages from buffer
-			while ( ( $pos = strpos( $buffer, "\n" ) ) !== false ) {
-				$message = substr( $buffer, 0, $pos );
-				$buffer = substr( $buffer, $pos + 1 );
-				
-				if ( !empty( $message ) ) {
-					if ( $this->debug ) {
-						$this->log_debug( 'Streaming response:', $message );
-					}
-					
-					try {
-						$event_data = $this->parse_event_data( $message );
-						if ( !empty( $event_data ) ) {
-							$callback( $event_data );
-							$complete_response .= isset( $event_data['content'] ) ? $event_data['content'] : '';
-						}
-					} catch ( Exception $e ) {
-						if ( $this->debug ) {
-							$this->log_debug( 'Stream parsing error:', $e->getMessage() );
-						}
-					}
-				}
-			}
-		}
-		
-		// Process any remaining data in buffer
-		if ( !empty( $buffer ) ) {
-			try {
-				$event_data = $this->parse_event_data( $buffer );
-				if ( !empty( $event_data ) ) {
-					$callback( $event_data );
-					$complete_response .= isset( $event_data['content'] ) ? $event_data['content'] : '';
-				}
-			} catch ( Exception $e ) {
-				if ( $this->debug ) {
-					$this->log_debug( 'Final buffer parsing error:', $e->getMessage() );
-				}
-			}
-		}
-		
-		fclose( $response );
+		$response_code = wp_remote_retrieve_response_code( $response );
+		$response_body = wp_remote_retrieve_body( $response );
 		
 		if ( $this->debug ) {
-			$this->log_debug( 'Stream complete, total response length:', strlen( $complete_response ) );
+			$this->log_debug( 'Streaming Response Code:', $response_code );
+			$this->log_debug( 'Streaming Response Body (first 200 chars):', substr($response_body, 0, 200) . '...' );
 		}
 		
-		return array(
-			'success' => true,
-			'data' => array(
-				'message' => $complete_response,  // 修改结构为前端期望的格式
-			),
-		);
+		if ( $response_code >= 200 && $response_code < 300 ) {
+			// 尝试解析JSON响应
+			$json_data = json_decode( $response_body, true );
+			if ( $json_data !== null && json_last_error() === JSON_ERROR_NONE ) {
+				$this->log_debug( 'Successfully parsed streaming JSON response', '' );
+				
+				// 提取内容
+				$content = $this->extract_content_from_json( $json_data );
+				if ( !empty( $content ) ) {
+					// 发送内容给回调函数
+					$stream_callback( array( 'content' => $content ) );
+					
+					return array(
+						'success' => true,
+						'data' => array(
+							'message' => $content,
+						),
+					);
+				}
+			}
+			
+			// 检查响应体是否是二进制数据
+			if ( $this->is_binary_data( $response_body ) ) {
+				$this->log_debug( 'Detected binary response', '' );
+				
+				// 尝试解析二进制响应
+				$complete_response = $this->parse_binary_response( $response_body, $stream_callback );
+				
+				if ( !empty( $complete_response ) ) {
+					return array(
+						'success' => true,
+						'data' => array(
+							'message' => $complete_response,
+						),
+					);
+				}
+			} else {
+				// 如果不是二进制数据，尝试按行解析
+				$lines = explode( "\n", $response_body );
+				
+				$complete_response = '';
+				foreach ( $lines as $line ) {
+					if ( !empty( $line ) ) {
+						try {
+							$event_data = $this->parse_event_data( $line );
+							if ( !empty( $event_data ) ) {
+								$stream_callback( $event_data );
+								$complete_response .= isset( $event_data['content'] ) ? $event_data['content'] : '';
+							}
+						} catch ( Exception $e ) {
+							if ( $this->debug ) {
+								$this->log_debug( 'Stream parsing error:', $e->getMessage() );
+							}
+						}
+					}
+				}
+			}
+			
+			if ( !empty( $complete_response ) ) {
+				return array(
+					'success' => true,
+					'data' => array(
+						'message' => $complete_response,
+					),
+				);
+			} else {
+				$this->log_debug( 'Failed to extract content from streaming response body', '' );
+				return array(
+					'success' => false,
+					'data' => array(
+						'message' => 'Failed to extract content from streaming response',
+					),
+				);
+			}
+		} else {
+			return array(
+				'success' => false,
+				'data' => array(
+					'message' => "Error: HTTP {$response_code} - {$response_body}",
+				),
+			);
+		}
 	}
+
+
+
 
 	/**
 	 * Parse event data from a streaming response.
+	 * 
+	 * This function is based on the TypeScript processMessage function.
 	 *
 	 * @since    1.0.0
 	 * @param    string    $chunk    The chunk of data.
@@ -528,27 +674,127 @@ class AI_Chat_Bedrock_AWS {
 				$this->log_debug( 'Parsed event data:', $parsed );
 			}
 			
-			// Handle different model response formats
+			// 严格参考TypeScript代码中的processMessage函数
+			$content = '';
+			
+			// Handle Nova's tool calls with exact schema match
+			if ( isset( $parsed['contentBlockStart']['start']['toolUse'] ) ) {
+				// 工具调用，在PHP中我们可能不需要处理这个
+				$this->log_debug( 'Tool use detected:', $parsed['contentBlockStart']['start']['toolUse'] );
+				return $results;
+			}
+			
+			// Handle Nova's tool input in contentBlockDelta
+			if ( isset( $parsed['contentBlockDelta']['delta']['toolUse']['input'] ) ) {
+				// 工具输入，在PHP中我们可能不需要处理这个
+				$this->log_debug( 'Tool input detected:', $parsed['contentBlockDelta']['delta']['toolUse']['input'] );
+				return $results;
+			}
+			
+			// Handle Nova's text content
+			if ( isset( $parsed['output']['message']['content'][0]['text'] ) ) {
+				$content = $parsed['output']['message']['content'][0]['text'];
+				$results['content'] = $content;
+				return $results;
+			}
+			
+			// Handle Nova's messageStart event
+			if ( isset( $parsed['messageStart'] ) ) {
+				// 消息开始事件，不需要处理内容
+				return $results;
+			}
+			
+			// Handle Nova's text delta
+			if ( isset( $parsed['contentBlockDelta']['delta']['text'] ) ) {
+				$content = $parsed['contentBlockDelta']['delta']['text'];
+				$results['content'] = $content;
+				return $results;
+			}
+			
+			// Handle Nova's contentBlockStop event
+			if ( isset( $parsed['contentBlockStop'] ) ) {
+				// 内容块结束事件，不需要处理内容
+				return $results;
+			}
+			
+			// Handle Nova's messageStop event
+			if ( isset( $parsed['messageStop'] ) ) {
+				// 消息结束事件，不需要处理内容
+				return $results;
+			}
+			
+			// Handle message_start event (for other models)
+			if ( isset( $parsed['type'] ) && $parsed['type'] === 'message_start' ) {
+				// 消息开始事件，不需要处理内容
+				return $results;
+			}
+			
+			// Handle content_block_start event (for other models)
+			if ( isset( $parsed['type'] ) && $parsed['type'] === 'content_block_start' ) {
+				// 内容块开始事件，不需要处理内容
+				return $results;
+			}
+			
+			// Handle content_block_delta event (for other models)
+			if ( isset( $parsed['type'] ) && $parsed['type'] === 'content_block_delta' ) {
+				if ( isset( $parsed['delta']['type'] ) && $parsed['delta']['type'] === 'input_json_delta' ) {
+					// JSON输入增量，在PHP中我们可能不需要处理这个
+					return $results;
+				} else if ( isset( $parsed['delta']['type'] ) && $parsed['delta']['type'] === 'text_delta' ) {
+					$content = $parsed['delta']['text'] ?? '';
+					if ( !empty( $content ) ) {
+						$results['content'] = $content;
+					}
+					return $results;
+				}
+			}
+			
+			// Handle tool calls for other models
+			if ( isset( $parsed['choices'][0]['message']['tool_calls'] ) ) {
+				// 工具调用，在PHP中我们可能不需要处理这个
+				$this->log_debug( 'Tool calls detected:', $parsed['choices'][0]['message']['tool_calls'] );
+				return $results;
+			}
+			
+			// Handle Claude streaming format (特殊处理)
 			if ( isset( $parsed['chunk'] ) && isset( $parsed['chunk']['bytes'] ) ) {
-				// Claude streaming format
 				$inner_chunk = json_decode( $parsed['chunk']['bytes'], true );
 				if ( isset( $inner_chunk['type'] ) && $inner_chunk['type'] === 'content_block_delta' ) {
-					$results['content'] = $inner_chunk['delta']['text'];
+					$content = $inner_chunk['delta']['text'] ?? '';
+					if ( !empty( $content ) ) {
+						$results['content'] = $content;
+					}
+					return $results;
 				}
-			} elseif ( isset( $parsed['outputText'] ) ) {
-				// Titan format
-				$results['content'] = $parsed['outputText'];
-			} elseif ( isset( $parsed['generation'] ) ) {
-				// Llama format
-				$results['content'] = $parsed['generation'];
-			} elseif ( isset( $parsed['content'] ) ) {
-				// Direct content format (our custom format)
-				$results['content'] = $parsed['content'];
-			} elseif ( isset( $parsed['data'] ) && isset( $parsed['data']['message'] ) ) {
-				// 新的响应格式
+			}
+			
+			// Handle various response formats
+			if ( isset( $parsed['delta']['text'] ) ) {
+				$content = $parsed['delta']['text'];
+			} else if ( isset( $parsed['choices'][0]['message']['content'] ) ) {
+				$content = $parsed['choices'][0]['message']['content'];
+			} else if ( isset( $parsed['content'][0]['text'] ) ) {
+				$content = $parsed['content'][0]['text'];
+			} else if ( isset( $parsed['generation'] ) ) {
+				$content = $parsed['generation'];
+			} else if ( isset( $parsed['outputText'] ) ) {
+				$content = $parsed['outputText'];
+			} else if ( isset( $parsed['response'] ) ) {
+				$content = $parsed['response'];
+			} else if ( isset( $parsed['output'] ) && is_string( $parsed['output'] ) ) {
+				$content = $parsed['output'];
+			} else if ( isset( $parsed['content'] ) && is_string( $parsed['content'] ) ) {
+				$content = $parsed['content'];
+			} else if ( isset( $parsed['data'] ) && isset( $parsed['data']['message'] ) ) {
 				$results['data'] = array(
 					'message' => $parsed['data']['message']
 				);
+				return $results;
+			}
+			
+			// 如果提取到了内容，添加到结果中
+			if ( !empty( $content ) ) {
+				$results['content'] = $content;
 			}
 			
 			// 添加调试日志
@@ -581,8 +827,33 @@ class AI_Chat_Bedrock_AWS {
 			$this->log_debug( 'Response data structure:', print_r( $response_data, true ) );
 		}
 		
-		if ( strpos( $model_id, 'anthropic.claude' ) !== false ) {
-			// Claude format - 新版API返回格式
+		// 参考TypeScript代码中的extractMessage函数
+		if ( strpos( $model_id, 'nova' ) !== false ) {
+			// Handle Nova model response format
+			if ( isset( $response_data['output']['message']['content'][0]['text'] ) ) {
+				$content = $response_data['output']['message']['content'][0]['text'];
+			} else if ( isset( $response_data['output'] ) && is_string( $response_data['output'] ) ) {
+				$content = $response_data['output'];
+			}
+		} else if ( strpos( $model_id, 'mistral' ) !== false ) {
+			// Handle Mistral model response format
+			if ( isset( $response_data['choices'][0]['message']['content'] ) ) {
+				$content = $response_data['choices'][0]['message']['content'];
+			} else if ( isset( $response_data['output'] ) && is_string( $response_data['output'] ) ) {
+				$content = $response_data['output'];
+			}
+		} else if ( strpos( $model_id, 'llama' ) !== false || strpos( $model_id, 'meta' ) !== false ) {
+			// Handle Llama model response format
+			$content = isset( $response_data['generation'] ) ? $response_data['generation'] : '';
+		} else if ( strpos( $model_id, 'titan' ) !== false ) {
+			// Handle Titan model response format
+			$content = isset( $response_data['outputText'] ) ? $response_data['outputText'] : '';
+			// 兼容旧版API
+			if ( empty( $content ) && isset( $response_data['results'] ) && isset( $response_data['results'][0]['outputText'] ) ) {
+				$content = $response_data['results'][0]['outputText'];
+			}
+		} else if ( strpos( $model_id, 'claude' ) !== false ) {
+			// Handle Claude model response format
 			if ( isset( $response_data['content'] ) && is_array( $response_data['content'] ) ) {
 				foreach ( $response_data['content'] as $content_block ) {
 					if ( isset( $content_block['type'] ) && $content_block['type'] === 'text' && isset( $content_block['text'] ) ) {
@@ -594,15 +865,16 @@ class AI_Chat_Bedrock_AWS {
 					$this->log_debug( 'Extracted content from Claude response:', $content );
 				}
 			}
-		} elseif ( strpos( $model_id, 'amazon.titan' ) !== false ) {
-			// Titan format
-			if ( isset( $response_data['results'] ) && isset( $response_data['results'][0]['outputText'] ) ) {
-				$content = $response_data['results'][0]['outputText'];
-			}
-		} elseif ( strpos( $model_id, 'meta.llama' ) !== false ) {
-			// Llama format
-			if ( isset( $response_data['generation'] ) ) {
-				$content = $response_data['generation'];
+		} else {
+			// Handle other response formats
+			if ( isset( $response_data['content'][0]['text'] ) ) {
+				$content = $response_data['content'][0]['text'];
+			} else if ( isset( $response_data['output'] ) && is_string( $response_data['output'] ) ) {
+				$content = $response_data['output'];
+			} else if ( isset( $response_data['response'] ) ) {
+				$content = $response_data['response'];
+			} else if ( isset( $response_data['message'] ) ) {
+				$content = $response_data['message'];
 			}
 		}
 		
@@ -661,6 +933,132 @@ class AI_Chat_Bedrock_AWS {
 			
 			error_log( "AI Chat Bedrock Debug - {$title} {$data}" );
 		}
+	}
+
+	/**
+	 * Extract content from JSON response.
+	 *
+	 * @since    1.0.0
+	 * @param    array     $json_data    The JSON data.
+	 * @return   string                  The extracted content.
+	 */
+	private function extract_content_from_json( $json_data ) {
+		$content = '';
+		
+		// 参考TypeScript代码中的extractMessage函数
+		if ( isset( $json_data['output']['message']['content'][0]['text'] ) ) {
+			$content = $json_data['output']['message']['content'][0]['text'];
+		} else if ( isset( $json_data['contentBlockDelta']['delta']['text'] ) ) {
+			$content = $json_data['contentBlockDelta']['delta']['text'];
+		} else if ( isset( $json_data['choices'][0]['message']['content'] ) ) {
+			$content = $json_data['choices'][0]['message']['content'];
+		} else if ( isset( $json_data['content'][0]['text'] ) ) {
+			$content = $json_data['content'][0]['text'];
+		} else if ( isset( $json_data['outputText'] ) ) {
+			$content = $json_data['outputText'];
+		} else if ( isset( $json_data['generation'] ) ) {
+			$content = $json_data['generation'];
+		} else if ( isset( $json_data['response'] ) ) {
+			$content = $json_data['response'];
+		} else if ( isset( $json_data['output'] ) && is_string( $json_data['output'] ) ) {
+			$content = $json_data['output'];
+		} else if ( isset( $json_data['message'] ) ) {
+			$content = $json_data['message'];
+		} else if ( isset( $json_data['id'] ) && isset( $json_data['content'] ) && is_array( $json_data['content'] ) ) {
+			// Claude format
+			foreach ( $json_data['content'] as $content_block ) {
+				if ( isset( $content_block['type'] ) && $content_block['type'] === 'text' && isset( $content_block['text'] ) ) {
+					$content .= $content_block['text'];
+				}
+			}
+		}
+		
+		return $content;
+	}
+
+	/**
+	 * Check if data is binary.
+	 *
+	 * @since    1.0.0
+	 * @param    string    $data    The data to check.
+	 * @return   bool               Whether the data is binary.
+	 */
+	private function is_binary_data( $data ) {
+		// 检查数据是否包含非打印字符
+		return preg_match( '/[^\x20-\x7E\t\r\n]/', $data ) === 1;
+	}
+	
+	/**
+	 * Parse binary response.
+	 *
+	 * @since    1.0.0
+	 * @param    string    $binary_data      The binary data.
+	 * @param    callable  $stream_callback  The streaming callback function.
+	 * @return   string                      The extracted content.
+	 */
+	private function parse_binary_response( $binary_data, $stream_callback ) {
+		$complete_response = '';
+		
+		// 尝试解析二进制响应
+		$this->log_debug( 'Binary response length:', strlen( $binary_data ) );
+		
+		// 检查是否包含Base64编码的数据
+		if ( preg_match_all( '/"bytes"\s*:\s*"([^"]+)"/', $binary_data, $matches ) ) {
+			$this->log_debug( 'Found Base64 encoded data:', count( $matches[1] ) . ' matches' );
+			
+			foreach ( $matches[1] as $base64_data ) {
+				// 解码Base64数据
+				$decoded_data = base64_decode( $base64_data );
+				if ( $decoded_data === false ) {
+					$this->log_debug( 'Failed to decode Base64 data', '' );
+					continue;
+				}
+				
+				// 尝试解析JSON
+				$json_data = json_decode( $decoded_data, true );
+				if ( $json_data === null && json_last_error() !== JSON_ERROR_NONE ) {
+					$this->log_debug( 'Failed to parse JSON from decoded data:', json_last_error_msg() );
+					continue;
+				}
+				
+				$this->log_debug( 'Successfully decoded and parsed JSON from Base64 data', '' );
+				$this->log_debug( 'Decoded JSON structure:', print_r( $json_data, true ) );
+				
+				// 处理解码后的JSON数据
+				if ( isset( $json_data['type'] ) && $json_data['type'] === 'content_block_delta' ) {
+					if ( isset( $json_data['delta']['text'] ) ) {
+						$content = $json_data['delta']['text'];
+						$complete_response .= $content;
+						
+						// 发送内容给回调函数
+						$stream_callback( array( 'content' => $content ) );
+					}
+				} else if ( isset( $json_data['type'] ) && $json_data['type'] === 'message_start' ) {
+					// 消息开始事件，不需要处理内容
+					$this->log_debug( 'Message start event', '' );
+				} else if ( isset( $json_data['type'] ) && $json_data['type'] === 'content_block_start' ) {
+					// 内容块开始事件，不需要处理内容
+					$this->log_debug( 'Content block start event', '' );
+				} else if ( isset( $json_data['type'] ) && $json_data['type'] === 'message_delta' ) {
+					// 消息增量事件，不需要处理内容
+					$this->log_debug( 'Message delta event', '' );
+				} else if ( isset( $json_data['type'] ) && $json_data['type'] === 'message_stop' ) {
+					// 消息结束事件，不需要处理内容
+					$this->log_debug( 'Message stop event', '' );
+				} else {
+					// 尝试提取内容
+					$content = $this->extract_content_from_json( $json_data );
+					if ( !empty( $content ) ) {
+						$complete_response .= $content;
+						
+						// 发送内容给回调函数
+						$stream_callback( array( 'content' => $content ) );
+					}
+				}
+			}
+		}
+		
+		return $complete_response;
 	}
 
 	/**

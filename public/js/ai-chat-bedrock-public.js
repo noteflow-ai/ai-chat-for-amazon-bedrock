@@ -175,9 +175,18 @@
 			
 			// 添加调试日志
 			console.log('Form submitted, message:', message);
+			console.log('Streaming enabled:', ai_chat_bedrock_params.enable_streaming);
 			
-			// 直接使用常规AJAX请求，不使用流式处理
-			handleRegularResponse(options, $typing);
+			// 根据后台设置决定是否使用流式处理
+			if (ai_chat_bedrock_params.enable_streaming && typeof EventSource !== 'undefined') {
+				// 使用流式处理
+				console.log('Using streaming response');
+				handleStreamingResponse(options, $typing);
+			} else {
+				// 使用常规AJAX请求
+				console.log('Using regular AJAX response');
+				handleRegularResponse(options, $typing);
+			}
 		}
 		
 		// Function to handle streaming response
@@ -227,6 +236,51 @@
 					let responseContent = '';
 					let hasStarted = false;
 					
+					// 创建一个打字机效果队列
+					let typewriterQueue = [];
+					let isTyping = false;
+					
+					// 打字机效果函数
+					function typeNextCharacter() {
+						if (typewriterQueue.length === 0) {
+							isTyping = false;
+							return;
+						}
+						
+						isTyping = true;
+						const nextChar = typewriterQueue.shift();
+						
+						// 获取当前正在流式显示的消息元素
+						const $lastMessage = $messagesContainer.find('.ai-chat-bedrock-message.streaming-message .ai-chat-bedrock-message-content');
+						if ($lastMessage.length) {
+							// 添加字符到消息内容
+							responseContent += nextChar;
+							$lastMessage.html(formatMessage(responseContent));
+							scrollToBottom();
+							
+							// 更新聊天历史
+							if (chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'assistant') {
+								chatHistory[chatHistory.length - 1].content = responseContent;
+							}
+							
+							// 设置下一个字符的延迟
+							setTimeout(typeNextCharacter, 10); // 调整速度，数值越小越快
+						} else {
+							isTyping = false;
+						}
+					}
+					
+					// 添加字符到打字机队列
+					function addToTypewriterQueue(text) {
+						for (let i = 0; i < text.length; i++) {
+							typewriterQueue.push(text[i]);
+						}
+						
+						if (!isTyping) {
+							typeNextCharacter();
+						}
+					}
+					
 					// Handle incoming messages
 					eventSource.onmessage = function(event) {
 						try {
@@ -245,7 +299,26 @@
 								// Add complete message if we haven't started yet
 								if (!hasStarted && responseContent) {
 									console.log('Adding complete message at end:', responseContent);
-									addMessage(responseContent);
+									// 创建一个新的AI消息，而不是使用addMessage函数
+									// 这样可以避免将欢迎消息转换为普通消息
+									const $message = $(`
+										<div class="ai-chat-bedrock-message ai-message">
+											<div class="ai-chat-bedrock-avatar">
+												<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="none" d="M0 0h24v24H0z"/><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 3a3 3 0 0 1 3 3v1h1a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h1v-1a3 3 0 0 1 3-3zm0 2a1 1 0 0 0-1 1v1h2v-1a1 1 0 0 0-1-1z" fill="currentColor"/></svg>
+											</div>
+											<div class="ai-chat-bedrock-message-content">
+												${formatMessage(responseContent)}
+											</div>
+										</div>
+									`);
+									$messagesContainer.append($message);
+									scrollToBottom();
+									
+									// 添加到聊天历史
+									chatHistory.push({ role: 'assistant', content: responseContent });
+								} else {
+									// 完成流式消息，移除streaming-message类
+									$messagesContainer.find('.ai-chat-bedrock-message.streaming-message').removeClass('streaming-message');
 								}
 								
 								// Re-enable form
@@ -273,32 +346,95 @@
 								return;
 							}
 							
-							// Append content
-							if (data.content) {
-								console.log('Received content chunk:', data.content);
-								
-								// If this is the first chunk, remove typing indicator and add message
-								if (!hasStarted) {
-									console.log('First chunk received, adding message');
-									removeTypingIndicator($typing);
-									addMessage(data.content);
-									hasStarted = true;
-									responseContent = data.content;
-								} else {
-									// Append to existing message
-									responseContent += data.content;
-									console.log('Appending to existing message, new length:', responseContent.length);
-									
-									// Update the last message
-									const $lastMessage = $messagesContainer.find('.ai-chat-bedrock-message:last-child .ai-chat-bedrock-message-content');
-									$lastMessage.html(formatMessage(responseContent));
-									scrollToBottom();
-									
-									// Update chat history
-									if (chatHistory.length > 0) {
-										chatHistory[chatHistory.length - 1].content = responseContent;
+							// 处理不同模型的流式响应
+							let contentToAdd = '';
+							
+							// 参考TypeScript代码中的processMessage函数
+							// 处理Nova模型的文本内容
+							if (data.output?.message?.content?.[0]?.text) {
+								contentToAdd = data.output.message.content[0].text;
+							}
+							// 处理Nova模型的文本增量
+							else if (data.contentBlockDelta?.delta?.text) {
+								contentToAdd = data.contentBlockDelta.delta.text;
+							}
+							// 处理Claude流式格式
+							else if (data.chunk?.bytes) {
+								try {
+									const decodedData = atob(data.chunk.bytes);
+									const innerData = JSON.parse(decodedData);
+									if (innerData.type === 'content_block_delta' && innerData.delta?.text) {
+										contentToAdd = innerData.delta.text;
 									}
+								} catch (e) {
+									console.error('Error parsing chunk bytes:', e);
 								}
+							}
+							// 处理content_block_delta事件
+							else if (data.type === 'content_block_delta' && data.delta?.type === 'text_delta') {
+								contentToAdd = data.delta.text || '';
+							}
+							// 处理其他响应格式
+							else if (data.delta?.text) {
+								contentToAdd = data.delta.text;
+							}
+							else if (data.choices?.[0]?.message?.content) {
+								contentToAdd = data.choices[0].message.content;
+							}
+							else if (data.content?.[0]?.text) {
+								contentToAdd = data.content[0].text;
+							}
+							else if (data.generation) {
+								contentToAdd = data.generation;
+							}
+							else if (data.outputText) {
+								contentToAdd = data.outputText;
+							}
+							else if (data.response) {
+								contentToAdd = data.response;
+							}
+							else if (data.output && typeof data.output === 'string') {
+								contentToAdd = data.output;
+							}
+							// 直接使用content字段
+							else if (data.content && typeof data.content === 'string') {
+								contentToAdd = data.content;
+							}
+							// 使用data.message字段（我们自定义的格式）
+							else if (data.data?.message) {
+								contentToAdd = data.data.message;
+							}
+							
+							// 如果提取到了内容，添加到响应中
+							if (contentToAdd) {
+								console.log('Extracted content chunk:', contentToAdd);
+								
+								// 如果是第一个内容块，移除打字指示器并创建一个新的消息元素
+								if (!hasStarted) {
+									console.log('First chunk received, creating new message');
+									removeTypingIndicator($typing);
+									
+									// 创建一个新的AI消息，而不是使用addMessage函数
+									// 这样可以避免将欢迎消息转换为普通消息
+									const $message = $(`
+										<div class="ai-chat-bedrock-message ai-message streaming-message">
+											<div class="ai-chat-bedrock-avatar">
+												<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="none" d="M0 0h24v24H0z"/><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 3a3 3 0 0 1 3 3v1h1a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h1v-1a3 3 0 0 1 3-3zm0 2a1 1 0 0 0-1 1v1h2v-1a1 1 0 0 0-1-1z" fill="currentColor"/></svg>
+											</div>
+											<div class="ai-chat-bedrock-message-content"></div>
+										</div>
+									`);
+									$messagesContainer.append($message);
+									
+									hasStarted = true;
+									responseContent = '';
+									
+									// 添加新的助手消息到聊天历史
+									chatHistory.push({ role: 'assistant', content: '' });
+								}
+								
+								// 添加内容到打字机队列
+								addToTypewriterQueue(contentToAdd);
 							}
 						} catch (error) {
 							console.error('Error parsing streaming response:', error, event.data);

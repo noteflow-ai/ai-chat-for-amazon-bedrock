@@ -71,11 +71,13 @@ class AI_Chat_Bedrock_Public {
 		// Get settings
 		$options = get_option( 'ai_chat_bedrock_settings' );
 		$welcome_message = isset( $options['welcome_message'] ) ? $options['welcome_message'] : __( 'Hello! How can I help you today?', 'ai-chat-bedrock' );
+		$enable_streaming = isset( $options['enable_streaming'] ) && $options['enable_streaming'] === 'on';
 		
 		wp_localize_script( $this->plugin_name, 'ai_chat_bedrock_params', array(
 			'ajax_url' => admin_url( 'admin-ajax.php' ),
 			'nonce' => wp_create_nonce( 'ai_chat_bedrock_nonce' ),
 			'welcome_message' => $welcome_message,
+			'enable_streaming' => $enable_streaming,
 		) );
 	}
 
