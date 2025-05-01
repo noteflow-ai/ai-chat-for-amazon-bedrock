@@ -1,48 +1,58 @@
-# AI Chat for Amazon Bedrock WordPress Plugin
+# AI Chat for Amazon Bedrock
 
-A WordPress plugin that integrates Amazon Bedrock AI models into your website, allowing visitors to chat with AI assistants.
+WordPress plugin to integrate Amazon Bedrock AI models into your WordPress site for AI-powered chat functionality.
+
+## Description
+
+AI Chat for Amazon Bedrock allows you to easily integrate Amazon Bedrock's powerful AI models into your WordPress site. This plugin provides a customizable chat interface that your visitors can use to interact with various AI models available on Amazon Bedrock.
 
 ## Features
 
-- Chat interface for website visitors
-- Support for multiple Amazon Bedrock models:
-  - Claude 3 Sonnet
-  - Claude 3 Haiku
-  - Claude Instant
-  - Amazon Titan Text Express
-  - Meta Llama 2
-- Streaming responses for a more interactive experience
-- Customizable system prompts
-- Chat history management
-- Markdown formatting support
-- Admin test interface
-- Shortcode for embedding chat on any page
+- **Multiple Model Support**: Works with Claude 3 (Sonnet, Haiku, Opus), Claude 3.5, Claude 3.7, Amazon Titan, Amazon Nova, Meta Llama 2 & 3, Mistral, and DeepSeek R1
+- **Streaming Responses**: Real-time streaming of AI responses for a more interactive experience
+- **Customizable Interface**: Easily customize the chat title, welcome message, and appearance
+- **System Prompt**: Set a system prompt to guide the AI's behavior
+- **Shortcode Integration**: Add the chat interface anywhere with a simple shortcode
+- **Admin Test Interface**: Test different models and settings directly from the admin panel
+
+## Requirements
+
+- WordPress 5.0 or higher
+- PHP 7.2 or higher
+- AWS account with access to Amazon Bedrock
+- AWS credentials with permissions to use Amazon Bedrock
 
 ## Installation
 
-1. Upload the plugin files to the `/wp-content/plugins/ai-chat-for-amazon-bedrock` directory
+1. Upload the `ai-chat-for-amazon-bedrock` folder to the `/wp-content/plugins/` directory
 2. Activate the plugin through the 'Plugins' menu in WordPress
-3. Configure your AWS credentials and settings in the plugin settings page
+3. Go to the 'AI Chat Bedrock' settings page
+4. Enter your AWS credentials and configure the plugin settings
+5. Use the shortcode `[ai_chat_bedrock]` to add the chat interface to any page or post
 
 ## Configuration
 
 ### AWS Settings
 
-1. Go to the plugin settings page (AI Chat Bedrock > Settings)
-2. Enter your AWS Region, Access Key, and Secret Key
-3. Select the model you want to use
-4. Configure model parameters (max tokens, temperature)
-5. Enable streaming for real-time responses
+- **AWS Region**: Select the AWS region where Amazon Bedrock is available
+- **AWS Access Key**: Enter your AWS Access Key
+- **AWS Secret Key**: Enter your AWS Secret Key
+
+### Model Settings
+
+- **Model ID**: Select the Amazon Bedrock model to use
+- **Max Tokens**: Set the maximum number of tokens for the AI response
+- **Temperature**: Control the randomness of the AI responses
+- **Enable Streaming**: Toggle streaming responses on/off
 
 ### Chat Settings
 
-1. Customize the system prompt to guide the AI's behavior
-2. Set the chat title displayed to users
-3. Enable debug mode if needed for troubleshooting
+- **System Prompt**: Set the system prompt to guide the AI's behavior
+- **Chat Title**: Set the title displayed above the chat interface
+- **Welcome Message**: Set the welcome message displayed when the chat is first loaded
+- **Debug Mode**: Enable/disable debug mode for troubleshooting
 
 ## Usage
-
-### Shortcode
 
 Add the chat interface to any page or post using the shortcode:
 
@@ -50,52 +60,31 @@ Add the chat interface to any page or post using the shortcode:
 [ai_chat_bedrock]
 ```
 
-### Customizing the Chat Interface
+## Development
 
-You can customize the appearance of the chat interface using CSS. The plugin adds the following CSS classes:
+### File Structure
 
-- `.ai-chat-bedrock-container`: The main chat container
-- `.ai-chat-bedrock-messages`: The messages container
-- `.ai-chat-bedrock-message`: Individual message container
-- `.ai-chat-bedrock-user-message`: User message styling
-- `.ai-chat-bedrock-ai-message`: AI message styling
+- `admin/` - Admin-specific functionality
+- `includes/` - Core plugin files
+- `languages/` - Internationalization files
+- `public/` - Public-facing functionality
 
-## Technical Details
+### Hooks
 
-### Streaming Implementation
+The plugin provides several actions and filters for developers to extend its functionality.
 
-The plugin uses Server-Sent Events (EventSource) for streaming responses from Amazon Bedrock. The implementation follows a two-step process:
+## Changelog
 
-1. First, a POST request is sent to initialize the streaming session
-2. Then, an EventSource connection is established to receive the streaming data
+### 1.0.5
+- Added support for Claude 3.5, Claude 3.7, and DeepSeek R1 models
+- Added support for Amazon Nova models
+- Fixed streaming response issues
+- Improved error handling and debugging
+- Fixed chat history issues
+- Added customizable welcome message
 
-This approach ensures compatibility with WordPress AJAX and avoids common issues with EventSource connections.
-
-### Error Handling
-
-The plugin includes robust error handling:
-
-- Automatic fallback to regular AJAX if streaming fails
-- Detailed error messages for users
-- Debug logging for troubleshooting
-- JSON parsing error recovery
-
-## Requirements
-
-- WordPress 5.0 or higher
-- PHP 7.4 or higher
-- AWS account with access to Amazon Bedrock
-- AWS credentials with appropriate permissions
-
-## Troubleshooting
-
-If you encounter issues with the plugin:
-
-1. Enable debug mode in the plugin settings
-2. Check the browser console for JavaScript errors
-3. Check the WordPress error log for PHP errors
-4. Verify your AWS credentials and permissions
-5. Ensure your server supports Server-Sent Events
+### 1.0.0
+- Initial release
 
 ## License
 
@@ -103,4 +92,4 @@ This plugin is licensed under the GPL v2 or later.
 
 ## Credits
 
-Developed by [Your Name]
+Developed by [Glay](https://github.com/noteflow-ai)

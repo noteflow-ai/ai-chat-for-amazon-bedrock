@@ -8,7 +8,7 @@
  * @since      1.0.0
  * @package    AI_Chat_Bedrock
  * @subpackage AI_Chat_Bedrock/includes
- * @author     Your Name <email@example.com>
+ * @author     Glay <https://github.com/noteflow-ai>
  */
 class AI_Chat_Bedrock {
 
@@ -53,9 +53,9 @@ class AI_Chat_Bedrock {
 		if ( defined( 'AI_CHAT_BEDROCK_VERSION' ) ) {
 			$this->version = AI_CHAT_BEDROCK_VERSION;
 		} else {
-			$this->version = '1.0.0';
+			$this->version = '1.0.5';
 		}
-		$this->plugin_name = 'ai-chat-bedrock';
+		$this->plugin_name = 'ai-chat-for-amazon-bedrock';
 
 		$this->load_dependencies();
 		$this->set_locale();
