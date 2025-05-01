@@ -233,63 +233,95 @@
 								// Remove typing indicator if still present
 								removeTypingIndicator($typing);
 						
-						// Add complete message if we haven't started yet
-						if (!hasStarted && responseContent) {
-							addMessage(responseContent);
+								// Add complete message if we haven't started yet
+								if (!hasStarted && responseContent) {
+									addMessage(responseContent);
+								}
+								
+								// Re-enable form
+								$textarea.prop('disabled', false);
+								$submitButton.prop('disabled', false);
+								$textarea.focus();
+								return;
+							}
+							
+							// Check for error
+							if (data.error) {
+								console.error('Error from server:', data.error);
+								eventSource.close();
+								
+								// Remove typing indicator
+								removeTypingIndicator($typing);
+								
+								// Show error message
+								showError(data.error);
+								
+								// Re-enable form
+								$textarea.prop('disabled', false);
+								$submitButton.prop('disabled', false);
+								$textarea.focus();
+								return;
+							}
+							
+							// Append content
+							if (data.content) {
+								// If this is the first chunk, remove typing indicator and add message
+								if (!hasStarted) {
+									removeTypingIndicator($typing);
+									addMessage(data.content);
+									hasStarted = true;
+									responseContent = data.content;
+								} else {
+									// Append to existing message
+									responseContent += data.content;
+									
+									// Update the last message
+									const $lastMessage = $messagesContainer.find('.ai-chat-bedrock-message:last-child .ai-chat-bedrock-message-content');
+									$lastMessage.html(formatMessage(responseContent));
+									scrollToBottom();
+									
+									// Update chat history
+									if (chatHistory.length > 0) {
+										chatHistory[chatHistory.length - 1].content = responseContent;
+									}
+								}
+							}
+						} catch (error) {
+							console.error('Error parsing streaming response:', error, event.data);
 						}
+					};
+					
+					// Handle errors
+					eventSource.onerror = function(error) {
+						console.error('EventSource error:', error);
+						eventSource.close();
+						
+						// Remove typing indicator
+						removeTypingIndicator($typing);
+						
+						// Show error message
+						showError('Error connecting to the server. Falling back to regular request.');
+						
+						// Fall back to regular AJAX
+						handleRegularResponse(options, null);
 						
 						// Re-enable form
 						$textarea.prop('disabled', false);
 						$submitButton.prop('disabled', false);
-						$textarea.focus();
-						return;
-					}
+					};
+				},
+				error: function(xhr, status, error) {
+					// Remove typing indicator
+					removeTypingIndicator($typing);
 					
-					// Append content
-					if (data.content) {
-						// If this is the first chunk, remove typing indicator and add message
-						if (!hasStarted) {
-							removeTypingIndicator($typing);
-							addMessage(data.content);
-							hasStarted = true;
-							responseContent = data.content;
-						} else {
-							// Append to existing message
-							responseContent += data.content;
-							
-							// Update the last message
-							const $lastMessage = $messagesContainer.find('.ai-chat-bedrock-message:last-child .ai-chat-bedrock-message-content');
-							$lastMessage.html(formatMessage(responseContent));
-							scrollToBottom();
-							
-							// Update chat history
-							if (chatHistory.length > 0) {
-								chatHistory[chatHistory.length - 1].content = responseContent;
-							}
-						}
-					}
-				} catch (error) {
-					console.error('Error parsing streaming response:', error);
+					// Show error message
+					showError('Error: ' + (error || 'Could not connect to the server.'));
+					
+					// Re-enable form
+					$textarea.prop('disabled', false);
+					$submitButton.prop('disabled', false);
 				}
-			};
-			
-			// Handle errors
-			eventSource.onerror = function() {
-				eventSource.close();
-				
-				// Remove typing indicator
-				removeTypingIndicator($typing);
-				
-				// Show error message
-				showError('Error connecting to the server. Falling back to regular request.');
-				
-				// Fall back to regular AJAX
-				handleRegularResponse(options, null);
-				
-				// Re-enable form
-				$textarea.prop('disabled', false);
-				$submitButton.prop('disabled', false);
-			};
+			});
 		}
 		
 		// Function to handle regular AJAX response
