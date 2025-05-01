@@ -236,13 +236,17 @@
 					let responseContent = '';
 					let hasStarted = false;
 					
-					// 直接显示流式内容，不使用打字机效果
+					// 直接显示流式内容
 					function appendStreamContent(text) {
+						console.log('Appending stream content:', text);
+						
 						// 获取当前正在流式显示的消息元素
 						const $lastMessage = $messagesContainer.find('.ai-chat-bedrock-message.streaming-message .ai-chat-bedrock-message-content');
 						if ($lastMessage.length) {
 							// 添加内容到消息
 							responseContent += text;
+							
+							// 更新消息内容
 							$lastMessage.html(formatMessage(responseContent));
 							scrollToBottom();
 							
@@ -250,6 +254,8 @@
 							if (chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'assistant') {
 								chatHistory[chatHistory.length - 1].content = responseContent;
 							}
+						} else {
+							console.error('No streaming message element found');
 						}
 					}
 					
