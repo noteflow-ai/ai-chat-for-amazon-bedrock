@@ -68,9 +68,14 @@ class AI_Chat_Bedrock_Public {
 	public function enqueue_scripts() {
 		wp_enqueue_script( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'js/ai-chat-bedrock-public.js', array( 'jquery' ), $this->version, false );
 		
+		// Get settings
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$welcome_message = isset( $options['welcome_message'] ) ? $options['welcome_message'] : __( 'Hello! How can I help you today?', 'ai-chat-bedrock' );
+		
 		wp_localize_script( $this->plugin_name, 'ai_chat_bedrock_params', array(
 			'ajax_url' => admin_url( 'admin-ajax.php' ),
 			'nonce' => wp_create_nonce( 'ai_chat_bedrock_nonce' ),
+			'welcome_message' => $welcome_message,
 		) );
 	}
 

@@ -225,6 +225,14 @@ class AI_Chat_Bedrock_Admin {
 		);
 		
 		add_settings_field(
+			'welcome_message',
+			__( 'Welcome Message', 'ai-chat-bedrock' ),
+			array( $this, 'welcome_message_render' ),
+			'ai_chat_bedrock_settings',
+			'ai_chat_bedrock_chat_settings'
+		);
+		
+		add_settings_field(
 			'debug_mode',
 			__( 'Debug Mode', 'ai-chat-bedrock' ),
 			array( $this, 'debug_mode_render' ),
@@ -264,6 +272,7 @@ class AI_Chat_Bedrock_Admin {
 		// Chat Settings
 		$output['system_prompt'] = sanitize_textarea_field( $input['system_prompt'] );
 		$output['chat_title'] = sanitize_text_field( $input['chat_title'] );
+		$output['welcome_message'] = sanitize_text_field( $input['welcome_message'] );
 		$output['debug_mode'] = isset( $input['debug_mode'] ) ? 'on' : 'off';
 		
 		return $output;
@@ -437,6 +446,20 @@ class AI_Chat_Bedrock_Admin {
 		<p class="description"><?php esc_html_e( 'Title displayed above the chat interface.', 'ai-chat-bedrock' ); ?></p>
 		<?php
 	}
+	
+	/**
+	 * Welcome message field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function welcome_message_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$value = isset( $options['welcome_message'] ) ? $options['welcome_message'] : 'Hello! How can I help you today?';
+		?>
+		<input type="text" name="ai_chat_bedrock_settings[welcome_message]" value="<?php echo esc_attr( $value ); ?>" class="regular-text">
+		<p class="description"><?php esc_html_e( 'Welcome message displayed when the chat is first loaded.', 'ai-chat-bedrock' ); ?></p>
+		<?php
+	}
 
 	/**
 	 * Debug mode field render.
@@ -588,6 +611,9 @@ class AI_Chat_Bedrock_Admin {
 				if (isset($data['content'])) {
 					echo "data: " . json_encode(array('content' => $data['content'])) . "\n\n";
 					flush();
+				} else if (isset($data['data']) && isset($data['data']['message'])) {
+					echo "data: " . json_encode(array('content' => $data['data']['message'])) . "\n\n";
+					flush();
 				}
 			};
 			
@@ -600,7 +626,12 @@ class AI_Chat_Bedrock_Admin {
 			// Save the complete response to session for history
 			if (isset($response['content'])) {
 				$this->save_message_to_history($message, $response['content']);
+			} else if (isset($response['data']) && isset($response['data']['message'])) {
+				$this->save_message_to_history($message, $response['data']['message']);
 			}
+			
+			// 添加调试日志
+			error_log('Streaming response: ' . print_r($response, true));
 			
 			// Send end of stream marker
 			echo "data: " . json_encode(array('end' => true)) . "\n\n";
@@ -621,16 +652,19 @@ class AI_Chat_Bedrock_Admin {
 				'messages' => $messages,
 			));
 			
+			error_log('AJAX Response from AWS: ' . print_r($response, true));
+			
 			if (isset($response['success']) && $response['success']) {
 				// Save the message to history
-				$this->save_message_to_history($message, $response['content']);
+				$ai_message = isset($response['data']['message']) ? $response['data']['message'] : '';
+				$this->save_message_to_history($message, $ai_message);
 				
-				wp_send_json_success(array(
-					'message' => $response['content'],
-				));
+				// 直接返回整个响应，让前端处理
+				wp_send_json($response);
 			} else {
+				$error_message = isset($response['data']['message']) ? $response['data']['message'] : 'An error occurred while processing your request.';
 				wp_send_json_error(array(
-					'message' => isset($response['message']) ? $response['message'] : 'An error occurred while processing your request.',
+					'message' => $error_message,
 				));
 			}
 			

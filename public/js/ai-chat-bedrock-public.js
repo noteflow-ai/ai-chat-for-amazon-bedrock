@@ -21,6 +21,15 @@
 		// Check if elements exist
 		if (!$chatContainer.length) return;
 		
+		// 初始化时，将欢迎消息添加到聊天历史中
+		if ($messagesContainer.find('.ai-chat-bedrock-welcome-message').length) {
+			const welcomeMessage = $messagesContainer.find('.ai-chat-bedrock-welcome-message .ai-chat-bedrock-message-content').text().trim();
+			if (welcomeMessage && chatHistory.length === 0) {
+				console.log('Adding welcome message to history:', welcomeMessage);
+				chatHistory.push({ role: 'assistant', content: welcomeMessage });
+			}
+		}
+		
 		// Function to add a message to the chat
 		function addMessage(content, isUser = false) {
 			const messageClass = isUser ? 'user-message' : 'ai-message';
@@ -42,9 +51,11 @@
 				</div>
 			`);
 			
-			// Remove welcome message if it exists
-			if ($messagesContainer.find('.ai-chat-bedrock-welcome-message').length && !isUser) {
-				$messagesContainer.find('.ai-chat-bedrock-welcome-message').remove();
+			// 不再移除欢迎消息，而是将其转换为普通消息
+			if ($messagesContainer.find('.ai-chat-bedrock-welcome-message').length) {
+				// 将欢迎消息转换为普通消息
+				const $welcomeMessage = $messagesContainer.find('.ai-chat-bedrock-welcome-message');
+				$welcomeMessage.removeClass('ai-chat-bedrock-welcome-message');
 			}
 			
 			$messagesContainer.append($message);
@@ -162,14 +173,11 @@
 				}
 			};
 			
-			// Check if EventSource is supported for streaming
-			if (typeof EventSource !== 'undefined') {
-				// Try streaming first
-				handleStreamingResponse(options, $typing);
-			} else {
-				// Fall back to regular AJAX
-				handleRegularResponse(options, $typing);
-			}
+			// 添加调试日志
+			console.log('Form submitted, message:', message);
+			
+			// 直接使用常规AJAX请求，不使用流式处理
+			handleRegularResponse(options, $typing);
 		}
 		
 		// Function to handle streaming response
@@ -224,6 +232,7 @@
 						try {
 							console.log('Received event data:', event.data);
 							const data = JSON.parse(event.data);
+							console.log('Parsed event data:', data);
 							
 							// Check if this is the end marker
 							if (data.end) {
@@ -235,6 +244,7 @@
 						
 								// Add complete message if we haven't started yet
 								if (!hasStarted && responseContent) {
+									console.log('Adding complete message at end:', responseContent);
 									addMessage(responseContent);
 								}
 								
@@ -265,8 +275,11 @@
 							
 							// Append content
 							if (data.content) {
+								console.log('Received content chunk:', data.content);
+								
 								// If this is the first chunk, remove typing indicator and add message
 								if (!hasStarted) {
+									console.log('First chunk received, adding message');
 									removeTypingIndicator($typing);
 									addMessage(data.content);
 									hasStarted = true;
@@ -274,6 +287,7 @@
 								} else {
 									// Append to existing message
 									responseContent += data.content;
+									console.log('Appending to existing message, new length:', responseContent.length);
 									
 									// Update the last message
 									const $lastMessage = $messagesContainer.find('.ai-chat-bedrock-message:last-child .ai-chat-bedrock-message-content');
@@ -326,17 +340,23 @@
 		
 		// Function to handle regular AJAX response
 		function handleRegularResponse(options, $typing) {
+			console.log('Making regular AJAX request with options:', options);
+			
 			$.ajax(options)
 				.done(function(response) {
 					// Remove typing indicator
 					removeTypingIndicator($typing);
 					
+					console.log('Received AJAX response:', response);
+					
 					if (response.success) {
+						console.log('Response success, message:', response.data?.message);
 						// Add AI response to chat
 						addMessage(response.data.message);
 					} else {
+						console.error('Response error:', response.data?.message);
 						// Show error message
-						showError(response.data.message || 'An error occurred while processing your request.');
+						showError(response.data?.message || 'An error occurred while processing your request.');
 					}
 				})
 				.fail(function(xhr, status, error) {
@@ -367,7 +387,8 @@
 			// Clear messages from DOM
 			$messagesContainer.empty();
 			
-			// Add welcome message back
+			// 从参数中获取欢迎消息
+			const welcomeMessage = ai_chat_bedrock_params.welcome_message || 'Hello! How can I help you today?';
 			$messagesContainer.html(`
 				<div class="ai-chat-bedrock-welcome-message">
 					<div class="ai-chat-bedrock-message ai-message">
@@ -375,11 +396,15 @@
 							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="none" d="M0 0h24v24H0z"/><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 3a3 3 0 0 1 3 3v1h1a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h1v-1a3 3 0 0 1 3-3zm0 2a1 1 0 0 0-1 1v1h2v-1a1 1 0 0 0-1-1z" fill="currentColor"/></svg>
 						</div>
 						<div class="ai-chat-bedrock-message-content">
-							Hello! How can I help you today?
+							${welcomeMessage}
 						</div>
 					</div>
 				</div>
 			`);
+			
+			// 将欢迎消息添加到聊天历史中
+			chatHistory.push({ role: 'assistant', content: welcomeMessage });
+			console.log('Added welcome message to history after clearing:', welcomeMessage);
 			
 			// Send clear history request to server
 			$.ajax({

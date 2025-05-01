@@ -116,17 +116,71 @@ class AI_Chat_Bedrock_AWS {
 		
 		// Format based on model provider
 		if ( strpos( $model_id, 'anthropic.claude' ) !== false ) {
-			// Claude format
+			// Claude format - 根据错误消息，需要调整消息格式
+			
+			// 查找系统消息
+			$system_content = '';
+			foreach ( $messages as $key => $message ) {
+				if ( $message['role'] === 'system' ) {
+					$system_content = $message['content'];
+					// 从消息数组中移除系统消息
+					unset( $messages[$key] );
+					break;
+				}
+			}
+			
+			// 重新索引数组
+			$messages = array_values( $messages );
+			
+			// 如果有系统消息，将其添加到第一个用户消息的前面
+			if ( !empty( $system_content ) && !empty( $messages ) ) {
+				foreach ( $messages as $key => $message ) {
+					if ( $message['role'] === 'user' ) {
+						$messages[$key]['content'] = $system_content . "\n\n" . $message['content'];
+						break;
+					}
+				}
+			}
+			
+			// 格式化消息，确保角色交替
 			$formatted_messages = array();
+			$last_role = null;
+			
 			foreach ( $messages as $message ) {
-				$formatted_messages[] = array(
-					'role' => $message['role'],
-					'content' => $message['content'],
-				);
+				// 只保留用户和助手角色
+				if ( $message['role'] === 'user' || $message['role'] === 'assistant' ) {
+					// 如果当前消息与上一条消息角色相同，需要插入一个空的对方角色消息
+					if ( $last_role === $message['role'] ) {
+						$empty_role = $message['role'] === 'user' ? 'assistant' : 'user';
+						$formatted_messages[] = array(
+							'role' => $empty_role,
+							'content' => $empty_role === 'assistant' ? 'I understand.' : 'Please continue.',
+						);
+					}
+					
+					$formatted_messages[] = array(
+						'role' => $message['role'],
+						'content' => $message['content'],
+					);
+					
+					$last_role = $message['role'];
+				}
+			}
+			
+			// 确保消息以用户角色开始
+			if ( !empty( $formatted_messages ) && $formatted_messages[0]['role'] !== 'user' ) {
+				array_unshift( $formatted_messages, array(
+					'role' => 'user',
+					'content' => 'Hello',
+				) );
 			}
 			
 			$payload['anthropic_version'] = 'bedrock-2023-05-31';
 			$payload['messages'] = $formatted_messages;
+			
+			if ( $this->debug ) {
+				$this->log_debug( 'Formatted Claude Messages:', $formatted_messages );
+			}
 			
 		} elseif ( strpos( $model_id, 'amazon.titan' ) !== false ) {
 			// Titan format
@@ -136,6 +190,8 @@ class AI_Chat_Bedrock_AWS {
 					$prompt .= "Human: " . $message['content'] . "\n";
 				} elseif ( $message['role'] === 'assistant' ) {
 					$prompt .= "Assistant: " . $message['content'] . "\n";
+				} elseif ( $message['role'] === 'system' ) {
+					$prompt = $message['content'] . "\n\n" . $prompt;
 				}
 			}
 			$prompt .= "Assistant: ";
@@ -150,6 +206,8 @@ class AI_Chat_Bedrock_AWS {
 					$prompt .= "User: " . $message['content'] . "\n";
 				} elseif ( $message['role'] === 'assistant' ) {
 					$prompt .= "Assistant: " . $message['content'] . "\n";
+				} elseif ( $message['role'] === 'system' ) {
+					$prompt = $message['content'] . "\n\n" . $prompt;
 				}
 			}
 			$prompt .= "Assistant: ";
@@ -170,43 +228,91 @@ class AI_Chat_Bedrock_AWS {
 	 * @param    callable  $stream_callback   The streaming callback function.
 	 * @return   array                        The response data.
 	 */
+	/**
+	 * Get the canonical URI for AWS request signing.
+	 *
+	 * @since    1.0.0
+	 * @param    string    $path    The request path.
+	 * @return   string             The canonical URI.
+	 */
+	private function get_canonical_uri($path) {
+		// 如果路径为空或只有根路径，直接返回"/"
+		if (empty($path) || $path === '/') return '/';
+		
+		// 分割路径
+		$segments = explode('/', trim($path, '/'));
+		$canonical_segments = array_map(function($segment) {
+			// 空段保持为空
+			if (empty($segment)) return '';
+			
+			// 对于特殊操作名称，不进行编码
+			if ($segment === 'invoke' || $segment === 'invoke-with-response-stream') {
+				return $segment;
+			}
+			
+			// 对于包含模型ID的段，需要特殊处理
+			if (strpos($segment, 'model/') !== false) {
+				// 分割"model/"和模型ID
+				$parts = explode('model/', $segment, 2);
+				return 'model/' . rawurlencode($parts[1]);
+			}
+			
+			// 对其他段进行URL编码
+			return rawurlencode($segment);
+		}, $segments);
+		
+		// 重新组合路径
+		return '/' . implode('/', $canonical_segments);
+	}
+
 	private function invoke_model( $payload, $model_id, $is_streaming = false, $stream_callback = null ) {
 		$endpoint = "https://bedrock-runtime.{$this->region}.amazonaws.com";
 		$service = 'bedrock';
 		$host = "bedrock-runtime.{$this->region}.amazonaws.com";
 		$content_type = 'application/json';
 		
-		$request_path = $is_streaming ? '/model/invoke-with-response-stream' : '/model/invoke';
+		// 构建请求路径
+		$request_path = $is_streaming ? 
+			"/model/{$model_id}/invoke-with-response-stream" : 
+			"/model/{$model_id}/invoke";
 		$request_parameters = '';
 		
-		$amz_target = $is_streaming ? 'BedrockRuntime.InvokeModelWithResponseStream' : 'BedrockRuntime.InvokeModel';
+		// 不再使用X-Amz-Target头
 		
-		$request_body = json_encode( $payload );
-		
-		// Add model ID to the request body
-		$request_body_with_model = json_encode( array(
-			'modelId' => $model_id,
-			'contentType' => $content_type,
-			'accept' => $content_type,
-			'body' => $request_body,
-		) );
+		// 直接使用payload作为请求体，不再包装
+		$request_body = json_encode($payload);
 		
 		$datetime = new DateTime( 'UTC' );
 		$amz_date = $datetime->format( 'Ymd\THis\Z' );
 		$date_stamp = $datetime->format( 'Ymd' );
 		
-		// Create canonical request
-		$canonical_uri = $request_path;
+		// 获取规范URI
+		$canonical_uri = $this->get_canonical_uri($request_path);
+		
+		if ( $this->debug ) {
+			$this->log_debug( 'Original Request Path:', $request_path );
+			$this->log_debug( 'Canonical URI:', $canonical_uri );
+		}
 		$canonical_querystring = $request_parameters;
-		$canonical_headers = "content-type:{$content_type}\n" . "host:{$host}\n" . "x-amz-date:{$amz_date}\n" . "x-amz-target:{$amz_target}\n";
-		$signed_headers = 'content-type;host;x-amz-date;x-amz-target';
-		$payload_hash = hash( 'sha256', $request_body_with_model );
+		$canonical_headers = "content-type:{$content_type}\nhost:{$host}\nx-amz-date:{$amz_date}\n";
+		$signed_headers = 'content-type;host;x-amz-date';
+		$payload_hash = hash( 'sha256', $request_body );
 		$canonical_request = "POST\n{$canonical_uri}\n{$canonical_querystring}\n{$canonical_headers}\n{$signed_headers}\n{$payload_hash}";
+		
+		if ( $this->debug ) {
+			$this->log_debug( 'Canonical Request:', $canonical_request );
+			$this->log_debug( 'Payload Hash:', $payload_hash );
+		}
 		
 		// Create string to sign
 		$algorithm = 'AWS4-HMAC-SHA256';
 		$credential_scope = "{$date_stamp}/{$this->region}/{$service}/aws4_request";
 		$string_to_sign = "{$algorithm}\n{$amz_date}\n{$credential_scope}\n" . hash( 'sha256', $canonical_request );
+		
+		if ( $this->debug ) {
+			$this->log_debug( 'String to Sign:', $string_to_sign );
+			$this->log_debug( 'Credential Scope:', $credential_scope );
+		}
 		
 		// Calculate signature
 		$signing_key = $this->get_signature_key( $this->secret_key, $date_stamp, $this->region, $service );
@@ -219,7 +325,6 @@ class AI_Chat_Bedrock_AWS {
 		$request_headers = array(
 			'Content-Type' => $content_type,
 			'X-Amz-Date' => $amz_date,
-			'X-Amz-Target' => $amz_target,
 			'Authorization' => $authorization_header,
 		);
 		
@@ -233,7 +338,7 @@ class AI_Chat_Bedrock_AWS {
 			'httpversion' => '1.1',
 			'blocking' => !$is_streaming,
 			'headers' => $request_headers,
-			'body' => $request_body_with_model,
+			'body' => $request_body,
 			'cookies' => array(),
 			'stream' => $is_streaming,
 		);
@@ -241,7 +346,8 @@ class AI_Chat_Bedrock_AWS {
 		if ( $this->debug ) {
 			$this->log_debug( 'Request URL:', $request_url );
 			$this->log_debug( 'Request Headers:', $request_headers );
-			$this->log_debug( 'Request Body:', $request_body_with_model );
+			$this->log_debug( 'Request Body:', $request_body );
+			$this->log_debug( 'Payload (before wrapping):', $payload );
 		}
 		
 		// Make the request
@@ -252,7 +358,9 @@ class AI_Chat_Bedrock_AWS {
 			$this->log_debug( 'Request Error:', $error_message );
 			return array(
 				'success' => false,
-				'message' => $error_message,
+				'data' => array(
+					'message' => $error_message,
+				),
 			);
 		}
 		
@@ -273,7 +381,9 @@ class AI_Chat_Bedrock_AWS {
 			} else {
 				return array(
 					'success' => false,
-					'message' => "Error: HTTP {$response_code} - {$response_body}",
+					'data' => array(
+						'message' => "Error: HTTP {$response_code} - {$response_body}",
+					),
 				);
 			}
 		}
@@ -294,7 +404,9 @@ class AI_Chat_Bedrock_AWS {
 			}
 			return array(
 				'success' => false,
-				'message' => 'Invalid response from server',
+				'data' => array(
+					'message' => 'Invalid response from server',
+				),
 			);
 		}
 		
@@ -366,7 +478,9 @@ class AI_Chat_Bedrock_AWS {
 		
 		return array(
 			'success' => true,
-			'content' => $complete_response,
+			'data' => array(
+				'message' => $complete_response,  // 修改结构为前端期望的格式
+			),
 		);
 	}
 
@@ -409,6 +523,11 @@ class AI_Chat_Bedrock_AWS {
 				}
 			}
 			
+			// 添加调试日志
+			if ( $this->debug ) {
+				$this->log_debug( 'Parsed event data:', $parsed );
+			}
+			
 			// Handle different model response formats
 			if ( isset( $parsed['chunk'] ) && isset( $parsed['chunk']['bytes'] ) ) {
 				// Claude streaming format
@@ -425,6 +544,16 @@ class AI_Chat_Bedrock_AWS {
 			} elseif ( isset( $parsed['content'] ) ) {
 				// Direct content format (our custom format)
 				$results['content'] = $parsed['content'];
+			} elseif ( isset( $parsed['data'] ) && isset( $parsed['data']['message'] ) ) {
+				// 新的响应格式
+				$results['data'] = array(
+					'message' => $parsed['data']['message']
+				);
+			}
+			
+			// 添加调试日志
+			if ( $this->debug ) {
+				$this->log_debug( 'Event results:', $results );
 			}
 			
 			return $results;
@@ -447,13 +576,22 @@ class AI_Chat_Bedrock_AWS {
 	private function parse_model_response( $response_data, $model_id ) {
 		$content = '';
 		
+		if ( $this->debug ) {
+			$this->log_debug( 'Parsing response for model:', $model_id );
+			$this->log_debug( 'Response data structure:', print_r( $response_data, true ) );
+		}
+		
 		if ( strpos( $model_id, 'anthropic.claude' ) !== false ) {
-			// Claude format
+			// Claude format - 新版API返回格式
 			if ( isset( $response_data['content'] ) && is_array( $response_data['content'] ) ) {
 				foreach ( $response_data['content'] as $content_block ) {
-					if ( isset( $content_block['text'] ) ) {
+					if ( isset( $content_block['type'] ) && $content_block['type'] === 'text' && isset( $content_block['text'] ) ) {
 						$content .= $content_block['text'];
 					}
+				}
+				
+				if ( $this->debug ) {
+					$this->log_debug( 'Extracted content from Claude response:', $content );
 				}
 			}
 		} elseif ( strpos( $model_id, 'amazon.titan' ) !== false ) {
@@ -468,9 +606,15 @@ class AI_Chat_Bedrock_AWS {
 			}
 		}
 		
+		if ( empty( $content ) && $this->debug ) {
+			$this->log_debug( 'Warning: Failed to extract content from response', '' );
+		}
+		
 		return array(
 			'success' => true,
-			'content' => $content,
+			'data' => array(
+				'message' => $content,  // 修改结构为前端期望的格式
+			),
 		);
 	}
 
@@ -489,6 +633,16 @@ class AI_Chat_Bedrock_AWS {
 		$k_region = hash_hmac( 'sha256', $region, $k_date, true );
 		$k_service = hash_hmac( 'sha256', $service, $k_region, true );
 		$k_signing = hash_hmac( 'sha256', 'aws4_request', $k_service, true );
+		
+		if ( $this->debug ) {
+			$this->log_debug( 'Signing Key Components:', array(
+				'k_date_hex' => bin2hex($k_date),
+				'k_region_hex' => bin2hex($k_region),
+				'k_service_hex' => bin2hex($k_service),
+				'k_signing_hex' => bin2hex($k_signing),
+			));
+		}
+		
 		return $k_signing;
 	}
 

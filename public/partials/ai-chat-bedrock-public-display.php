@@ -24,7 +24,11 @@
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="none" d="M0 0h24v24H0z"/><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 3a3 3 0 0 1 3 3v1h1a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h1v-1a3 3 0 0 1 3-3zm0 2a1 1 0 0 0-1 1v1h2v-1a1 1 0 0 0-1-1z" fill="currentColor"/></svg>
                 </div>
                 <div class="ai-chat-bedrock-message-content">
-                    <?php esc_html_e( 'Hello! How can I help you today?', 'ai-chat-bedrock' ); ?>
+                    <?php 
+                    $options = get_option( 'ai_chat_bedrock_settings' );
+                    $welcome_message = isset( $options['welcome_message'] ) ? $options['welcome_message'] : __( 'Hello! How can I help you today?', 'ai-chat-bedrock' );
+                    echo esc_html( $welcome_message ); 
+                    ?>
                 </div>
             </div>
         </div>
