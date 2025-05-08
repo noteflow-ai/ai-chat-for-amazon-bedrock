@@ -1,9 +1,9 @@
 === AI Chat for Amazon Bedrock ===
 Contributors: glay
-Tags: ai, chat, amazon, bedrock, claude, llama, mistral, titan, nova, deepseek
+Tags: ai, chat, amazon, bedrock, claude
 Requires at least: 5.0
 Tested up to: 6.8
-Stable tag: 1.0.5
+Stable tag: 1.0.6
 Requires PHP: 7.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -77,6 +77,13 @@ You can add the chat interface to any page or post using the shortcode `[ai_chat
 
 == Changelog ==
 
+= 1.0.6 =
+* Fixed internationalization issues with text domain
+* Improved security with proper escaping of output
+* Added ABSPATH checks to prevent direct file access
+* Used more unique function name prefixes
+* Fixed readme.txt tag issues
+
 = 1.0.5 =
 * Added support for Claude 3.5, Claude 3.7, and DeepSeek R1 models
 * Added support for Amazon Nova models
@@ -89,6 +96,9 @@ You can add the chat interface to any page or post using the shortcode `[ai_chat
 * Initial release
 
 == Upgrade Notice ==
+
+= 1.0.6 =
+This update improves security, fixes internationalization issues, and makes the plugin more compliant with WordPress coding standards.
 
 = 1.0.5 =
 This update adds support for the latest AI models and fixes several issues with streaming responses and chat history.

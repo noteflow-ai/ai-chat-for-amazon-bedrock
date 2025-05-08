@@ -31,10 +31,7 @@ class AI_Chat_Bedrock_i18n {
 	 * @since    1.0.0
 	 */
 	public function load_plugin_textdomain() {
-		load_plugin_textdomain(
-			'ai-chat-for-amazon-bedrock',
-			false,
-			dirname( dirname( plugin_basename( __FILE__ ) ) ) . '/languages/'
-		);
+		// WordPress 4.6 and later automatically loads the plugin's translation files
+		// No need to call load_plugin_textdomain() for plugins hosted on WordPress.org
 	}
 }

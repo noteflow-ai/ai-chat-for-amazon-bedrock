@@ -91,8 +91,8 @@ class AI_Chat_Bedrock_Admin {
 	 */
 	public function add_plugin_admin_menu() {
 		add_menu_page(
-			__( 'AI Chat for Amazon Bedrock', 'ai-chat-bedrock' ),
-			__( 'AI Chat Bedrock', 'ai-chat-bedrock' ),
+			__( 'AI Chat for Amazon Bedrock', 'ai-chat-for-amazon-bedrock' ),
+			__( 'AI Chat Bedrock', 'ai-chat-for-amazon-bedrock' ),
 			'manage_options',
 			$this->plugin_name,
 			array( $this, 'display_plugin_admin_page' ),
@@ -102,8 +102,8 @@ class AI_Chat_Bedrock_Admin {
 		
 		add_submenu_page(
 			$this->plugin_name,
-			__( 'Settings', 'ai-chat-bedrock' ),
-			__( 'Settings', 'ai-chat-bedrock' ),
+			__( 'Settings', 'ai-chat-for-amazon-bedrock' ),
+			__( 'Settings', 'ai-chat-for-amazon-bedrock' ),
 			'manage_options',
 			$this->plugin_name . '-settings',
 			array( $this, 'display_plugin_admin_settings_page' )
@@ -111,8 +111,8 @@ class AI_Chat_Bedrock_Admin {
 		
 		add_submenu_page(
 			$this->plugin_name,
-			__( 'Test Chat', 'ai-chat-bedrock' ),
-			__( 'Test Chat', 'ai-chat-bedrock' ),
+			__( 'Test Chat', 'ai-chat-for-amazon-bedrock' ),
+			__( 'Test Chat', 'ai-chat-for-amazon-bedrock' ),
 			'manage_options',
 			$this->plugin_name . '-test',
 			array( $this, 'display_plugin_admin_test_page' )
@@ -548,8 +548,8 @@ class AI_Chat_Bedrock_Admin {
 			if (!wp_verify_nonce($nonce, 'ai_chat_bedrock_nonce')) {
 				if ($is_eventsource) {
 					header('Content-Type: text/event-stream');
-					echo "data: " . json_encode(array('error' => 'Invalid security token.')) . "\n\n";
-					echo "data: " . json_encode(array('end' => true)) . "\n\n";
+					echo "data: " . wp_json_encode(array('error' => 'Invalid security token.')) . "\n\n";
+					echo "data: " . wp_json_encode(array('end' => true)) . "\n\n";
 					flush();
 					exit;
 				} else {
@@ -576,8 +576,8 @@ class AI_Chat_Bedrock_Admin {
 		if (empty($message)) {
 			if ($is_eventsource) {
 				header('Content-Type: text/event-stream');
-				echo "data: " . json_encode(array('error' => 'Message cannot be empty.')) . "\n\n";
-				echo "data: " . json_encode(array('end' => true)) . "\n\n";
+				echo "data: " . wp_json_encode(array('error' => 'Message cannot be empty.')) . "\n\n";
+				echo "data: " . wp_json_encode(array('end' => true)) . "\n\n";
 				flush();
 				exit;
 			} else {
@@ -639,10 +639,10 @@ class AI_Chat_Bedrock_Admin {
 			// Define streaming callback
 			$streaming_callback = function($data) {
 				if (isset($data['content'])) {
-					echo "data: " . json_encode(array('content' => $data['content'])) . "\n\n";
+					echo "data: " . wp_json_encode(array('content' => $data['content'])) . "\n\n";
 					flush();
 				} else if (isset($data['data']) && isset($data['data']['message'])) {
-					echo "data: " . json_encode(array('content' => $data['data']['message'])) . "\n\n";
+					echo "data: " . wp_json_encode(array('content' => $data['data']['message'])) . "\n\n";
 					flush();
 				}
 			};
@@ -664,7 +664,7 @@ class AI_Chat_Bedrock_Admin {
 			error_log('Streaming response: ' . print_r($response, true));
 			
 			// Send end of stream marker
-			echo "data: " . json_encode(array('end' => true)) . "\n\n";
+			echo "data: " . wp_json_encode(array('end' => true)) . "\n\n";
 			flush();
 			exit;
 		} 

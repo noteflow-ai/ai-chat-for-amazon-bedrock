@@ -10,6 +10,11 @@
  * @package    AI_Chat_Bedrock
  * @subpackage AI_Chat_Bedrock/admin/partials
  */
+
+// If this file is called directly, abort.
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
 ?>
 
 <div class="wrap">
