@@ -53,7 +53,7 @@ class AI_Chat_Bedrock {
 		if ( defined( 'AI_CHAT_BEDROCK_VERSION' ) ) {
 			$this->version = AI_CHAT_BEDROCK_VERSION;
 		} else {
-			$this->version = '1.0.5';
+			$this->version = '1.0.7';
 		}
 		$this->plugin_name = 'ai-chat-for-amazon-bedrock';
 
@@ -61,6 +61,8 @@ class AI_Chat_Bedrock {
 		$this->set_locale();
 		$this->define_admin_hooks();
 		$this->define_public_hooks();
+		$this->define_mcp_hooks();
+		$this->init_wp_mcp_server();
 	}
 
 	/**
@@ -73,6 +75,9 @@ class AI_Chat_Bedrock {
 	 * - AI_Chat_Bedrock_Admin. Defines all hooks for the admin area.
 	 * - AI_Chat_Bedrock_Public. Defines all hooks for the public side of the site.
 	 * - AI_Chat_Bedrock_AWS. Handles AWS Bedrock API integration.
+	 * - AI_Chat_Bedrock_MCP_Client. Handles MCP client functionality.
+	 * - AI_Chat_Bedrock_MCP_Integration. Integrates MCP client with the plugin.
+	 * - AI_Chat_Bedrock_WP_MCP_Server. WordPress MCP server implementation.
 	 *
 	 * Create an instance of the loader which will be used to register the hooks
 	 * with WordPress.
@@ -109,6 +114,21 @@ class AI_Chat_Bedrock {
 		 * The class responsible for AWS Bedrock API integration.
 		 */
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-ai-chat-bedrock-aws.php';
+
+		/**
+		 * The class responsible for MCP client functionality.
+		 */
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-ai-chat-bedrock-mcp-client.php';
+
+		/**
+		 * The class responsible for MCP integration with the plugin.
+		 */
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-ai-chat-bedrock-mcp-integration.php';
+
+		/**
+		 * The class responsible for WordPress MCP server implementation.
+		 */
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-ai-chat-bedrock-wp-mcp-server.php';
 
 		$this->loader = new AI_Chat_Bedrock_Loader();
 	}
@@ -163,6 +183,31 @@ class AI_Chat_Bedrock {
 		
 		// Register shortcode
 		$this->loader->add_shortcode( 'ai_chat_bedrock', $plugin_public, 'display_chat_interface' );
+	}
+
+	/**
+	 * Register all of the hooks related to the MCP functionality
+	 * of the plugin.
+	 *
+	 * @since    1.0.7
+	 * @access   private
+	 */
+	private function define_mcp_hooks() {
+		$plugin_mcp = new AI_Chat_Bedrock_MCP_Integration();
+		$plugin_mcp->register_hooks($this->loader);
+	}
+
+	/**
+	 * Initialize the WordPress MCP server.
+	 *
+	 * @since    1.0.7
+	 * @access   private
+	 */
+	private function init_wp_mcp_server() {
+		// Only initialize if MCP is enabled
+		if (get_option('ai_chat_bedrock_enable_mcp', false)) {
+			new AI_Chat_Bedrock_WP_MCP_Server();
+		}
 	}
 
 	/**

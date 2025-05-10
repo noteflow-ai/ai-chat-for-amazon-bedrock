@@ -68,6 +68,17 @@ class AI_Chat_Bedrock_Admin {
 	 */
 	public function enqueue_styles() {
 		wp_enqueue_style( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'css/ai-chat-bedrock-admin.css', array(), $this->version, 'all' );
+		
+		// On test page, also enqueue the public styles
+		$screen = get_current_screen();
+		if ( $screen && strpos( $screen->id, $this->plugin_name . '-test' ) !== false ) {
+			wp_enqueue_style( $this->plugin_name . '-public', plugin_dir_url( dirname( __FILE__ ) ) . 'public/css/ai-chat-bedrock-public.css', array(), $this->version, 'all' );
+		}
+		
+		// Enqueue MCP styles if MCP is enabled
+		if ( get_option( 'ai_chat_bedrock_enable_mcp', false ) ) {
+			wp_enqueue_style( $this->plugin_name . '-mcp', plugin_dir_url( __FILE__ ) . 'css/ai-chat-bedrock-mcp.css', array(), $this->version, 'all' );
+		}
 	}
 
 	/**
@@ -78,10 +89,52 @@ class AI_Chat_Bedrock_Admin {
 	public function enqueue_scripts() {
 		wp_enqueue_script( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'js/ai-chat-bedrock-admin.js', array( 'jquery' ), $this->version, false );
 		
-		wp_localize_script( $this->plugin_name, 'ai_chat_bedrock_params', array(
+		// On test page, also enqueue the public script
+		$screen = get_current_screen();
+		if ( $screen && strpos( $screen->id, $this->plugin_name . '-test' ) !== false ) {
+			wp_enqueue_script( $this->plugin_name . '-public', plugin_dir_url( dirname( __FILE__ ) ) . 'public/js/ai-chat-bedrock-public.js', array( 'jquery' ), $this->version, false );
+			
+			// Get settings for public script
+			$options = get_option( 'ai_chat_bedrock_settings' );
+			$welcome_message = isset( $options['welcome_message'] ) ? $options['welcome_message'] : __( 'Hello! How can I help you today?', 'ai-chat-bedrock' );
+			$enable_streaming = isset( $options['enable_streaming'] ) && $options['enable_streaming'] === 'on';
+			
+			wp_localize_script( $this->plugin_name . '-public', 'ai_chat_bedrock_params', array(
+				'ajax_url' => admin_url( 'admin-ajax.php' ),
+				'nonce' => wp_create_nonce( 'ai_chat_bedrock_nonce' ),
+				'welcome_message' => $welcome_message,
+				'enable_streaming' => $enable_streaming,
+			) );
+		}
+		
+		wp_localize_script( $this->plugin_name, 'ai_chat_bedrock_admin', array(
 			'ajax_url' => admin_url( 'admin-ajax.php' ),
 			'nonce' => wp_create_nonce( 'ai_chat_bedrock_nonce' ),
+			'mcp_nonce' => wp_create_nonce( 'ai_chat_bedrock_mcp_nonce' ),
+			'i18n' => array(
+				'settings_saved' => __( 'Settings saved successfully.', 'ai-chat-for-amazon-bedrock' ),
+				'ajax_error' => __( 'An error occurred while processing your request.', 'ai-chat-for-amazon-bedrock' ),
+				'no_servers' => __( 'No MCP servers registered yet.', 'ai-chat-for-amazon-bedrock' ),
+				'missing_fields' => __( 'Server name and URL are required.', 'ai-chat-for-amazon-bedrock' ),
+				'adding' => __( 'Adding...', 'ai-chat-for-amazon-bedrock' ),
+				'add_server' => __( 'Add Server', 'ai-chat-for-amazon-bedrock' ),
+				'removing' => __( 'Removing...', 'ai-chat-for-amazon-bedrock' ),
+				'remove' => __( 'Remove', 'ai-chat-for-amazon-bedrock' ),
+				'refreshing' => __( 'Refreshing...', 'ai-chat-for-amazon-bedrock' ),
+				'refresh' => __( 'Refresh', 'ai-chat-for-amazon-bedrock' ),
+				'loading_tools' => __( 'Loading tools...', 'ai-chat-for-amazon-bedrock' ),
+				'no_tools' => __( 'No tools found for this server.', 'ai-chat-for-amazon-bedrock' ),
+				'no_parameters' => __( 'No parameters required.', 'ai-chat-for-amazon-bedrock' ),
+				'available' => __( 'Available', 'ai-chat-for-amazon-bedrock' ),
+				'unavailable' => __( 'Unavailable', 'ai-chat-for-amazon-bedrock' ),
+				'confirm_remove_server' => __( 'Are you sure you want to remove this MCP server?', 'ai-chat-for-amazon-bedrock' ),
+			),
 		) );
+		
+		// Enqueue MCP scripts if MCP is enabled
+		if ( get_option( 'ai_chat_bedrock_enable_mcp', false ) ) {
+			wp_enqueue_script( $this->plugin_name . '-mcp', plugin_dir_url( __FILE__ ) . 'js/ai-chat-bedrock-mcp.js', array( 'jquery', $this->plugin_name ), $this->version, false );
+		}
 	}
 
 	/**
@@ -116,6 +169,24 @@ class AI_Chat_Bedrock_Admin {
 			'manage_options',
 			$this->plugin_name . '-test',
 			array( $this, 'display_plugin_admin_test_page' )
+		);
+		
+		add_submenu_page(
+			$this->plugin_name,
+			__( 'MCP Settings', 'ai-chat-for-amazon-bedrock' ),
+			__( 'MCP Settings', 'ai-chat-for-amazon-bedrock' ),
+			'manage_options',
+			$this->plugin_name . '-mcp',
+			array( $this, 'display_plugin_admin_mcp_page' )
+		);
+		
+		add_submenu_page(
+			$this->plugin_name,
+			__( 'Test WordPress MCP', 'ai-chat-for-amazon-bedrock' ),
+			__( 'Test WordPress MCP', 'ai-chat-for-amazon-bedrock' ),
+			'manage_options',
+			$this->plugin_name . '-test-wp-mcp',
+			array( $this, 'display_plugin_admin_test_wp_mcp_page' )
 		);
 	}
 
@@ -238,6 +309,16 @@ class AI_Chat_Bedrock_Admin {
 			array( $this, 'debug_mode_render' ),
 			'ai_chat_bedrock_settings',
 			'ai_chat_bedrock_chat_settings'
+		);
+		
+		// Register MCP settings
+		register_setting(
+			'ai_chat_bedrock_mcp_settings',
+			'ai_chat_bedrock_enable_mcp',
+			array(
+				'type' => 'boolean',
+				'default' => false,
+			)
 		);
 	}
 
@@ -522,7 +603,7 @@ class AI_Chat_Bedrock_Admin {
 	public function display_plugin_admin_settings_page() {
 		include_once 'partials/ai-chat-bedrock-admin-settings.php';
 	}
-
+	
 	/**
 	 * Display the plugin test chat page.
 	 *
@@ -530,6 +611,53 @@ class AI_Chat_Bedrock_Admin {
 	 */
 	public function display_plugin_admin_test_page() {
 		include_once 'partials/ai-chat-bedrock-admin-test.php';
+	}
+
+	/**
+	 * Display the plugin MCP settings page.
+	 *
+	 * @since    1.0.7
+	 */
+	public function display_plugin_admin_mcp_page() {
+		include_once 'partials/ai-chat-bedrock-admin-mcp-tab.php';
+	}
+	
+	/**
+	 * Display the plugin WordPress MCP test page.
+	 *
+	 * @since    1.0.7
+	 */
+	public function display_plugin_admin_test_wp_mcp_page() {
+		include_once 'partials/ai-chat-bedrock-admin-test-mcp.php';
+	}
+	
+	/**
+	 * AJAX handler for saving a single option.
+	 *
+	 * @since    1.0.7
+	 */
+	public function save_option() {
+		// Check permissions
+		if (!current_user_can('manage_options')) {
+			wp_send_json_error(array('message' => __('Permission denied', 'ai-chat-for-amazon-bedrock')), 403);
+		}
+
+		// Verify nonce
+		if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_chat_bedrock_nonce')) {
+			wp_send_json_error(array('message' => __('Security check failed', 'ai-chat-for-amazon-bedrock')), 403);
+		}
+
+		// Get option details
+		$option_name = isset($_POST['option_name']) ? sanitize_text_field($_POST['option_name']) : '';
+		$option_value = isset($_POST['option_value']) ? sanitize_text_field($_POST['option_value']) : '';
+
+		if (empty($option_name)) {
+			wp_send_json_error(array('message' => __('Option name is required', 'ai-chat-for-amazon-bedrock')), 400);
+		}
+
+		// Save option
+		update_option($option_name, $option_value);
+		wp_send_json_success(array('message' => __('Option saved successfully', 'ai-chat-for-amazon-bedrock')));
 	}
 
 	/**
@@ -620,6 +748,14 @@ class AI_Chat_Bedrock_Admin {
 			'content' => $message,
 		);
 		
+		// Prepare payload for AWS Bedrock
+		$payload = array(
+			'messages' => $messages,
+		);
+		
+		// Apply MCP tools filter if available
+		$payload = apply_filters('ai_chat_bedrock_message_payload', $payload, $message);
+		
 		// Check if streaming is enabled in settings and requested
 		$enable_streaming = isset($options['enable_streaming']) && $options['enable_streaming'] === 'on';
 		$streaming_requested = $is_eventsource || $is_streaming_post;
@@ -647,11 +783,11 @@ class AI_Chat_Bedrock_Admin {
 				}
 			};
 			
+			// Add streaming callback to payload
+			$payload['streaming_callback'] = $streaming_callback;
+			
 			// Send message to AWS Bedrock with streaming
-			$response = $this->aws->handle_chat_message(array(
-				'messages' => $messages,
-				'streaming_callback' => $streaming_callback,
-			));
+			$response = $this->aws->handle_chat_message($payload);
 			
 			// Save the complete response to session for history
 			if (isset($response['content'])) {
@@ -659,9 +795,6 @@ class AI_Chat_Bedrock_Admin {
 			} else if (isset($response['data']) && isset($response['data']['message'])) {
 				$this->save_message_to_history($message, $response['data']['message']);
 			}
-			
-			// 添加调试日志
-			error_log('Streaming response: ' . print_r($response, true));
 			
 			// Send end of stream marker
 			echo "data: " . wp_json_encode(array('end' => true)) . "\n\n";
@@ -678,18 +811,17 @@ class AI_Chat_Bedrock_Admin {
 		// Regular AJAX request without streaming
 		else {
 			// Send message to AWS Bedrock without streaming
-			$response = $this->aws->handle_chat_message(array(
-				'messages' => $messages,
-			));
+			$response = $this->aws->handle_chat_message($payload);
 			
-			error_log('AJAX Response from AWS: ' . print_r($response, true));
+			// Process MCP tool calls if any
+			$response = apply_filters('ai_chat_bedrock_process_response', $response, $message);
 			
 			if (isset($response['success']) && $response['success']) {
 				// Save the message to history
 				$ai_message = isset($response['data']['message']) ? $response['data']['message'] : '';
 				$this->save_message_to_history($message, $ai_message);
 				
-				// 直接返回整个响应，让前端处理
+				// Return the entire response for frontend processing
 				wp_send_json($response);
 			} else {
 				$error_message = isset($response['data']['message']) ? $response['data']['message'] : 'An error occurred while processing your request.';

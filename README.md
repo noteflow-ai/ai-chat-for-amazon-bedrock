@@ -14,6 +14,7 @@ AI Chat for Amazon Bedrock allows you to easily integrate Amazon Bedrock's power
 - **System Prompt**: Set a system prompt to guide the AI's behavior
 - **Shortcode Integration**: Add the chat interface anywhere with a simple shortcode
 - **Admin Test Interface**: Test different models and settings directly from the admin panel
+- **MCP Support**: Model Context Protocol (MCP) integration to extend AI capabilities with external tools
 
 ## Requirements
 
@@ -52,6 +53,12 @@ AI Chat for Amazon Bedrock allows you to easily integrate Amazon Bedrock's power
 - **Welcome Message**: Set the welcome message displayed when the chat is first loaded
 - **Debug Mode**: Enable/disable debug mode for troubleshooting
 
+### MCP Settings
+
+- **Enable MCP**: Enable/disable Model Context Protocol integration
+- **MCP Servers**: Add, remove, and manage MCP servers
+- **MCP Tools**: View and use tools provided by MCP servers
+
 ## Usage
 
 Add the chat interface to any page or post using the shortcode:
@@ -73,9 +80,30 @@ Add the chat interface to any page or post using the shortcode:
 
 The plugin provides several actions and filters for developers to extend its functionality.
 
+## Model Context Protocol (MCP)
+
+MCP is an open protocol that standardizes how applications provide context to LLMs. This plugin supports MCP integration, allowing you to extend the AI's capabilities with external tools and resources.
+
+### Adding MCP Servers
+
+1. Go to the 'MCP Settings' page
+2. Enable MCP integration
+3. Add MCP servers by providing a name and URL
+4. View and manage available tools from each server
+
+### Using MCP Tools
+
+Once MCP servers are registered, their tools become available to the AI model during chat interactions. The AI can use these tools to perform actions like retrieving information, processing data, or interacting with external systems.
+
 ## Changelog
 
-### 1.0.5
+### 1.0.7
+- Added Model Context Protocol (MCP) support
+- Added MCP client functionality
+- Added MCP server management interface
+- Added MCP tools integration with AI chat
+
+### 1.0.6
 - Added support for Claude 3.5, Claude 3.7, and DeepSeek R1 models
 - Added support for Amazon Nova models
 - Fixed streaming response issues

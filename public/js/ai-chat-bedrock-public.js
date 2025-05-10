@@ -19,7 +19,14 @@
 		const $clearButton = $('.ai-chat-bedrock-clear');
 		
 		// Check if elements exist
-		if (!$chatContainer.length) return;
+		if (!$chatContainer.length) {
+			console.log('Chat container not found');
+			return;
+		}
+		
+		console.log('AI Chat Bedrock initialized');
+		console.log('Form found:', $form.length);
+		console.log('Submit button found:', $submitButton.length);
 		
 		// 初始化时，将欢迎消息添加到聊天历史中
 		if ($messagesContainer.find('.ai-chat-bedrock-welcome-message').length) {
@@ -143,10 +150,19 @@
 		
 		// Function to handle form submission
 		function handleSubmit(e) {
-			e.preventDefault();
+			if (e) {
+				e.preventDefault();
+			}
+			
+			console.log('handleSubmit called');
 			
 			const message = $textarea.val().trim();
-			if (!message) return;
+			if (!message) {
+				console.log('Message is empty, not sending');
+				return;
+			}
+			
+			console.log('Sending message:', message);
 			
 			// Disable form while processing
 			$textarea.prop('disabled', true);
@@ -175,6 +191,8 @@
 			
 			// 添加调试日志
 			console.log('Form submitted, message:', message);
+			console.log('AJAX URL:', ai_chat_bedrock_params.ajax_url);
+			console.log('Nonce:', ai_chat_bedrock_params.nonce);
 			console.log('Streaming enabled:', ai_chat_bedrock_params.enable_streaming);
 			
 			// 根据后台设置决定是否使用流式处理
@@ -439,6 +457,7 @@
 					};
 				},
 				error: function(xhr, status, error) {
+					console.error('AJAX error:', status, error);
 					// Remove typing indicator
 					removeTypingIndicator($typing);
 					
@@ -474,6 +493,7 @@
 					}
 				})
 				.fail(function(xhr, status, error) {
+					console.error('AJAX fail:', status, error);
 					// Remove typing indicator
 					removeTypingIndicator($typing);
 					
@@ -535,12 +555,21 @@
 		$textarea.on('keydown', function(e) {
 			if (e.key === 'Enter' && !e.shiftKey) {
 				e.preventDefault();
-				$form.submit();
+				handleSubmit();
 			}
 		});
 		
 		// Handle form submission
-		$form.on('submit', handleSubmit);
+		$form.on('submit', function(e) {
+			e.preventDefault();
+			handleSubmit(e);
+		});
+		
+		// Handle submit button click
+		$submitButton.on('click', function(e) {
+			console.log('Submit button clicked');
+			handleSubmit(e);
+		});
 		
 		// Handle clear button click
 		$clearButton.on('click', clearChat);

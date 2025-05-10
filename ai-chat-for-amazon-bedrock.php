@@ -22,7 +22,7 @@ if ( ! defined( 'WPINC' ) ) {
 /**
  * Currently plugin version.
  */
-define( 'AI_CHAT_BEDROCK_VERSION', '1.0.6' );
+define( 'AI_CHAT_BEDROCK_VERSION', '1.0.7' );
 define( 'AI_CHAT_BEDROCK_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AI_CHAT_BEDROCK_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 

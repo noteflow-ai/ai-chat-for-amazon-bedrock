@@ -33,7 +33,9 @@ if ( ! defined( 'ABSPATH' ) ) {
             $chat_title = isset( $options['chat_title'] ) ? $options['chat_title'] : 'Chat with AI';
             
             // Display the chat interface
+            echo '<div id="ai-chat-bedrock-test-interface">';
             echo do_shortcode( '[ai_chat_bedrock title="' . esc_attr( $chat_title ) . '" width="600px" height="500px"]' );
+            echo '</div>';
             ?>
         </div>
         
@@ -54,12 +56,24 @@ if ( ! defined( 'ABSPATH' ) ) {
                 $model_name = 'Claude 3 Sonnet';
             } elseif ( strpos( $model_id, 'anthropic.claude-3-haiku' ) !== false ) {
                 $model_name = 'Claude 3 Haiku';
-            } elseif ( strpos( $model_id, 'anthropic.claude-instant' ) !== false ) {
-                $model_name = 'Claude Instant';
+            } elseif ( strpos( $model_id, 'anthropic.claude-3-opus' ) !== false ) {
+                $model_name = 'Claude 3 Opus';
+            } elseif ( strpos( $model_id, 'anthropic.claude-3-5-sonnet' ) !== false ) {
+                $model_name = 'Claude 3.5 Sonnet';
+            } elseif ( strpos( $model_id, 'anthropic.claude-3-7-sonnet' ) !== false ) {
+                $model_name = 'Claude 3.7 Sonnet';
             } elseif ( strpos( $model_id, 'amazon.titan' ) !== false ) {
                 $model_name = 'Amazon Titan';
-            } elseif ( strpos( $model_id, 'meta.llama' ) !== false ) {
+            } elseif ( strpos( $model_id, 'amazon.nova' ) !== false ) {
+                $model_name = 'Amazon Nova';
+            } elseif ( strpos( $model_id, 'meta.llama2' ) !== false ) {
                 $model_name = 'Meta Llama 2';
+            } elseif ( strpos( $model_id, 'meta.llama3' ) !== false ) {
+                $model_name = 'Meta Llama 3';
+            } elseif ( strpos( $model_id, 'mistral' ) !== false ) {
+                $model_name = 'Mistral';
+            } elseif ( strpos( $model_id, 'deepseek' ) !== false ) {
+                $model_name = 'DeepSeek';
             }
             ?>
             
