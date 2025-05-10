@@ -674,4 +674,268 @@ class AI_Chat_Bedrock_Admin {
 		wp_send_json_success( array( 'message' => 'Chat history cleared.' ) );
 		wp_die();
 	}
+
+	/**
+	 * AWS settings section callback.
+	 *
+	 * @since    1.0.0
+	 */
+	public function aws_settings_section_callback() {
+		echo '<p>' . esc_html__( 'Configure your AWS credentials for Amazon Bedrock access.', 'ai-chat-for-amazon-bedrock' ) . '</p>';
+	}
+
+	/**
+	 * Model settings section callback.
+	 *
+	 * @since    1.0.0
+	 */
+	public function model_settings_section_callback() {
+		echo '<p>' . esc_html__( 'Configure the AI model settings.', 'ai-chat-for-amazon-bedrock' ) . '</p>';
+	}
+
+	/**
+	 * Chat settings section callback.
+	 *
+	 * @since    1.0.0
+	 */
+	public function chat_settings_section_callback() {
+		echo '<p>' . esc_html__( 'Configure the chat interface settings.', 'ai-chat-for-amazon-bedrock' ) . '</p>';
+	}
+
+	/**
+	 * AWS region field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function aws_region_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$value = isset( $options['aws_region'] ) ? $options['aws_region'] : 'us-east-1';
+		?>
+		<select name="ai_chat_bedrock_settings[aws_region]">
+			<option value="us-east-1" <?php selected( $value, 'us-east-1' ); ?>>US East (N. Virginia)</option>
+			<option value="us-east-2" <?php selected( $value, 'us-east-2' ); ?>>US East (Ohio)</option>
+			<option value="us-west-1" <?php selected( $value, 'us-west-1' ); ?>>US West (N. California)</option>
+			<option value="us-west-2" <?php selected( $value, 'us-west-2' ); ?>>US West (Oregon)</option>
+			<option value="eu-west-1" <?php selected( $value, 'eu-west-1' ); ?>>EU (Ireland)</option>
+			<option value="eu-central-1" <?php selected( $value, 'eu-central-1' ); ?>>EU (Frankfurt)</option>
+			<option value="ap-northeast-1" <?php selected( $value, 'ap-northeast-1' ); ?>>Asia Pacific (Tokyo)</option>
+			<option value="ap-southeast-1" <?php selected( $value, 'ap-southeast-1' ); ?>>Asia Pacific (Singapore)</option>
+		</select>
+		<p class="description"><?php esc_html_e( 'Select the AWS region where Amazon Bedrock is available.', 'ai-chat-for-amazon-bedrock' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * AWS access key field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function aws_access_key_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$value = isset( $options['aws_access_key'] ) ? $options['aws_access_key'] : '';
+		?>
+		<input type="text" name="ai_chat_bedrock_settings[aws_access_key]" value="<?php echo esc_attr( $value ); ?>" class="regular-text">
+		<p class="description"><?php esc_html_e( 'Enter your AWS Access Key with permissions to use Amazon Bedrock.', 'ai-chat-for-amazon-bedrock' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * AWS secret key field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function aws_secret_key_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$value = isset( $options['aws_secret_key'] ) ? $options['aws_secret_key'] : '';
+		?>
+		<input type="password" name="ai_chat_bedrock_settings[aws_secret_key]" value="<?php echo esc_attr( $value ); ?>" class="regular-text">
+		<p class="description"><?php esc_html_e( 'Enter your AWS Secret Key. Leave empty to keep the existing value.', 'ai-chat-for-amazon-bedrock' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * Model ID field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function model_id_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$value = isset( $options['model_id'] ) ? $options['model_id'] : 'anthropic.claude-3-sonnet-20240229-v1:0';
+		?>
+		<select name="ai_chat_bedrock_settings[model_id]">
+			<!-- Claude Models -->
+			<optgroup label="Claude Models">
+				<option value="anthropic.claude-3-sonnet-20240229-v1:0" <?php selected( $value, 'anthropic.claude-3-sonnet-20240229-v1:0' ); ?>>Claude 3 Sonnet</option>
+				<option value="anthropic.claude-3-haiku-20240307-v1:0" <?php selected( $value, 'anthropic.claude-3-haiku-20240307-v1:0' ); ?>>Claude 3 Haiku</option>
+				<option value="anthropic.claude-3-opus-20240229-v1:0" <?php selected( $value, 'anthropic.claude-3-opus-20240229-v1:0' ); ?>>Claude 3 Opus</option>
+				<option value="us.anthropic.claude-3-5-sonnet-20241022-v2:0" <?php selected( $value, 'us.anthropic.claude-3-5-sonnet-20241022-v2:0' ); ?>>Claude 3.5 Sonnet</option>
+				<option value="us.anthropic.claude-3-7-sonnet-20250219-v1:0" <?php selected( $value, 'us.anthropic.claude-3-7-sonnet-20250219-v1:0' ); ?>>Claude 3.7 Sonnet</option>
+				
+			</optgroup>
+			
+			<!-- Amazon Models -->
+			<optgroup label="Amazon Models">
+				<option value="amazon.titan-text-express-v1" <?php selected( $value, 'amazon.titan-text-express-v1' ); ?>>Amazon Titan Text Express</option>
+				<option value="amazon.titan-text-premier-v1:0" <?php selected( $value, 'amazon.titan-text-premier-v1:0' ); ?>>Amazon Titan Text Premier</option>
+				<option value="amazon.nova-text-v1:0" <?php selected( $value, 'amazon.nova-text-v1:0' ); ?>>Amazon Nova Text</option>
+			</optgroup>
+			
+			<!-- Meta Models -->
+			<optgroup label="Meta Models">
+				<option value="meta.llama2-13b-chat-v1" <?php selected( $value, 'meta.llama2-13b-chat-v1' ); ?>>Meta Llama 2 13B</option>
+				<option value="meta.llama2-70b-chat-v1" <?php selected( $value, 'meta.llama2-70b-chat-v1' ); ?>>Meta Llama 2 70B</option>
+				<option value="meta.llama3-8b-instruct-v1:0" <?php selected( $value, 'meta.llama3-8b-instruct-v1:0' ); ?>>Meta Llama 3 8B</option>
+				<option value="meta.llama3-70b-instruct-v1:0" <?php selected( $value, 'meta.llama3-70b-instruct-v1:0' ); ?>>Meta Llama 3 70B</option>
+			</optgroup>
+			
+			<!-- Mistral Models -->
+			<optgroup label="Mistral Models">
+				<option value="mistral.mistral-7b-instruct-v0:2" <?php selected( $value, 'mistral.mistral-7b-instruct-v0:2' ); ?>>Mistral 7B</option>
+				<option value="mistral.mixtral-8x7b-instruct-v0:1" <?php selected( $value, 'mistral.mixtral-8x7b-instruct-v0:1' ); ?>>Mistral Mixtral 8x7B</option>
+			</optgroup>
+			
+			<!-- DeepSeek Models -->
+			<optgroup label="DeepSeek Models">
+				<option value="us.deepseek.r1-v1:0" <?php selected( $value, 'us.deepseek.r1-v1:0' ); ?>>DeepSeek R1</option>
+			</optgroup>
+		</select>
+		<p class="description"><?php esc_html_e( 'Select the Amazon Bedrock model to use for chat.', 'ai-chat-for-amazon-bedrock' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * Max tokens field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function max_tokens_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$value = isset( $options['max_tokens'] ) ? $options['max_tokens'] : 1000;
+		?>
+		<input type="number" name="ai_chat_bedrock_settings[max_tokens]" value="<?php echo esc_attr( $value ); ?>" min="100" max="4000" step="100">
+		<p class="description"><?php esc_html_e( 'Maximum number of tokens to generate in the response.', 'ai-chat-for-amazon-bedrock' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * Temperature field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function temperature_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$value = isset( $options['temperature'] ) ? $options['temperature'] : 0.7;
+		?>
+		<input type="range" name="ai_chat_bedrock_settings[temperature]" value="<?php echo esc_attr( $value ); ?>" min="0" max="1" step="0.1" oninput="this.nextElementSibling.value = this.value">
+		<output><?php echo esc_html( $value ); ?></output>
+		<p class="description"><?php esc_html_e( 'Controls randomness. Lower values are more deterministic, higher values are more creative.', 'ai-chat-for-amazon-bedrock' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * Enable streaming field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function enable_streaming_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$checked = isset( $options['enable_streaming'] ) && $options['enable_streaming'] === 'on';
+		?>
+		<input type="checkbox" name="ai_chat_bedrock_settings[enable_streaming]" <?php checked( $checked ); ?>>
+		<p class="description"><?php esc_html_e( 'Enable streaming responses for a more interactive chat experience.', 'ai-chat-for-amazon-bedrock' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * System prompt field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function system_prompt_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$value = isset( $options['system_prompt'] ) ? $options['system_prompt'] : 'You are a helpful AI assistant powered by Amazon Bedrock.';
+		?>
+		<textarea name="ai_chat_bedrock_settings[system_prompt]" rows="4" cols="50" class="large-text"><?php echo esc_textarea( $value ); ?></textarea>
+		<p class="description"><?php esc_html_e( 'System prompt to guide the AI\'s behavior and responses.', 'ai-chat-for-amazon-bedrock' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * Chat title field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function chat_title_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$value = isset( $options['chat_title'] ) ? $options['chat_title'] : 'Chat with AI';
+		?>
+		<input type="text" name="ai_chat_bedrock_settings[chat_title]" value="<?php echo esc_attr( $value ); ?>" class="regular-text">
+		<p class="description"><?php esc_html_e( 'Title displayed above the chat interface.', 'ai-chat-for-amazon-bedrock' ); ?></p>
+		<?php
+	}
+	
+	/**
+	 * Welcome message field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function welcome_message_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$value = isset( $options['welcome_message'] ) ? $options['welcome_message'] : 'Hello! How can I help you today?';
+		?>
+		<input type="text" name="ai_chat_bedrock_settings[welcome_message]" value="<?php echo esc_attr( $value ); ?>" class="regular-text">
+		<p class="description"><?php esc_html_e( 'Welcome message displayed when the chat is first loaded.', 'ai-chat-for-amazon-bedrock' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * Debug mode field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function debug_mode_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$checked = isset( $options['debug_mode'] ) && $options['debug_mode'] === 'on';
+		?>
+		<input type="checkbox" name="ai_chat_bedrock_settings[debug_mode]" <?php checked( $checked ); ?>>
+		<p class="description"><?php esc_html_e( 'Enable debug mode to log API requests and responses.', 'ai-chat-for-amazon-bedrock' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * Validate settings.
+	 *
+	 * @since    1.0.0
+	 * @param    array    $input    The input array.
+	 * @return   array              The validated input array.
+	 */
+	public function validate_settings( $input ) {
+		$output = array();
+		
+		// AWS Settings
+		$output['aws_region'] = sanitize_text_field( $input['aws_region'] );
+		$output['aws_access_key'] = sanitize_text_field( $input['aws_access_key'] );
+		
+		// Only update secret key if it's not empty (to avoid clearing it when not changed)
+		if ( ! empty( $input['aws_secret_key'] ) ) {
+			$output['aws_secret_key'] = sanitize_text_field( $input['aws_secret_key'] );
+		} else {
+			$options = get_option( 'ai_chat_bedrock_settings' );
+			$output['aws_secret_key'] = isset( $options['aws_secret_key'] ) ? $options['aws_secret_key'] : '';
+		}
+		
+		// Model Settings
+		$output['model_id'] = sanitize_text_field( $input['model_id'] );
+		$output['max_tokens'] = absint( $input['max_tokens'] );
+		$output['temperature'] = min( 1, max( 0, floatval( $input['temperature'] ) ) );
+		$output['enable_streaming'] = isset( $input['enable_streaming'] ) ? 'on' : 'off';
+		
+		// Chat Settings
+		$output['system_prompt'] = sanitize_textarea_field( $input['system_prompt'] );
+		$output['chat_title'] = sanitize_text_field( $input['chat_title'] );
+		$output['welcome_message'] = sanitize_text_field( $input['welcome_message'] );
+		$output['debug_mode'] = isset( $input['debug_mode'] ) ? 'on' : 'off';
+		
+		return $output;
+	}
 }

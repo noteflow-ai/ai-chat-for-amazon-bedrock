@@ -130,107 +130,49 @@
             $tbody.empty();
             
             if (!servers || Object.keys(servers).length === 0) {
-                $tbody.html('<tr class="no-items"><td colspan="5">' + ai_chat_bedrock_admin.i18n.no_servers + '</td></tr>');
+                $tbody.html('<tr class="no-items"><td colspan="5">No MCP servers registered yet.</td></tr>');
                 return;
             }
             
-            // Check if template exists
-            const templateElement = document.getElementById('ai-chat-bedrock-mcp-server-row-template');
-            if (!templateElement) {
-                console.error('Server row template not found, creating fallback template');
-                
-                // Create a fallback template
-                const fallbackTemplate = `
-                    <tr data-server-name="{{server_name}}">
-                        <td>{{server_name}}</td>
-                        <td>{{server_url}}</td>
-                        <td>
-                            <span class="ai-chat-bedrock-server-status {{status_class}}">
-                                {{status_text}}
-                            </span>
-                        </td>
-                        <td>
-                            <button type="button" class="button ai-chat-bedrock-view-tools" data-server="{{server_name}}">
-                                View Tools
-                            </button>
-                            <button type="button" class="button ai-chat-bedrock-refresh-tools" data-server="{{server_name}}">
-                                Refresh
-                            </button>
-                        </td>
-                        <td>
-                            <button type="button" class="button ai-chat-bedrock-remove-server" data-server="{{server_name}}">
-                                Remove
-                            </button>
-                        </td>
-                    </tr>
-                `;
-                
-                // Create a hidden template element
-                const tempDiv = document.createElement('div');
-                tempDiv.style.display = 'none';
-                tempDiv.innerHTML = `<script type="text/template" id="ai-chat-bedrock-mcp-server-row-template">${fallbackTemplate}</script>`;
-                document.body.appendChild(tempDiv);
-            }
-            
-            const template = $('#ai-chat-bedrock-mcp-server-row-template').html();
-            if (!template) {
-                console.error('Server row template still not found after fallback');
-                
-                // Create a simple representation without template
-                $.each(servers, function(name, server) {
-                    const statusClass = server.available ? 'status-available' : 'status-unavailable';
-                    const statusText = server.available ? ai_chat_bedrock_admin.i18n.available : ai_chat_bedrock_admin.i18n.unavailable;
-                    
-                    const $row = $('<tr>').attr('data-server-name', name);
-                    $row.append($('<td>').text(name));
-                    $row.append($('<td>').text(server.url));
-                    $row.append($('<td>').append(
-                        $('<span>').addClass('ai-chat-bedrock-server-status ' + statusClass).text(statusText)
-                    ));
-                    
-                    const $toolsCell = $('<td>');
-                    $toolsCell.append(
-                        $('<button>').attr({
-                            'type': 'button',
-                            'class': 'button ai-chat-bedrock-view-tools',
-                            'data-server': name
-                        }).text('View Tools')
-                    );
-                    $toolsCell.append(' ');
-                    $toolsCell.append(
-                        $('<button>').attr({
-                            'type': 'button',
-                            'class': 'button ai-chat-bedrock-refresh-tools',
-                            'data-server': name
-                        }).text('Refresh')
-                    );
-                    $row.append($toolsCell);
-                    
-                    $row.append($('<td>').append(
-                        $('<button>').attr({
-                            'type': 'button',
-                            'class': 'button ai-chat-bedrock-remove-server',
-                            'data-server': name
-                        }).text('Remove')
-                    ));
-                    
-                    $tbody.append($row);
-                });
-                
-                return;
-            }
-            
+            // Create rows directly without using a template
             $.each(servers, function(name, server) {
                 const statusClass = server.available ? 'status-available' : 'status-unavailable';
-                const statusText = server.available ? ai_chat_bedrock_admin.i18n.available : ai_chat_bedrock_admin.i18n.unavailable;
+                const statusText = server.available ? 'Available' : 'Unavailable';
                 
-                let html = template
-                    .replace(/{{server_name}}/g, name)
-                    .replace(/{{server_url}}/g, server.url)
-                    .replace(/{{status_class}}/g, statusClass)
-                    .replace(/{{status_text}}/g, statusText);
+                const $row = $('<tr>').attr('data-server-name', name);
+                $row.append($('<td>').text(name));
+                $row.append($('<td>').text(server.url));
+                $row.append($('<td>').append(
+                    $('<span>').addClass('ai-chat-bedrock-server-status ' + statusClass).text(statusText)
+                ));
                 
-                $tbody.append(html);
+                const $toolsCell = $('<td>');
+                $toolsCell.append(
+                    $('<button>').attr({
+                        'type': 'button',
+                        'class': 'button ai-chat-bedrock-view-tools',
+                        'data-server': name
+                    }).text('View Tools')
+                );
+                $toolsCell.append(' ');
+                $toolsCell.append(
+                    $('<button>').attr({
+                        'type': 'button',
+                        'class': 'button ai-chat-bedrock-refresh-tools',
+                        'data-server': name
+                    }).text('Refresh')
+                );
+                $row.append($toolsCell);
+                
+                $row.append($('<td>').append(
+                    $('<button>').attr({
+                        'type': 'button',
+                        'class': 'button ai-chat-bedrock-remove-server',
+                        'data-server': name
+                    }).text('Remove')
+                ));
+                
+                $tbody.append($row);
             });
         },
 
@@ -414,87 +356,19 @@
             $container.empty();
             
             if (!tools || tools.length === 0) {
-                $container.html('<p>' + ai_chat_bedrock_admin.i18n.no_tools + '</p>');
-                return;
-            }
-            
-            // Check if template exists
-            const templateElement = document.getElementById('ai-chat-bedrock-mcp-tool-item-template');
-            if (!templateElement) {
-                console.error('Tool item template not found, creating fallback template');
-                
-                // Create a fallback template
-                const fallbackTemplate = `
-                    <div class="ai-chat-bedrock-mcp-tool-item">
-                        <h4>{{name}}</h4>
-                        <p class="description">{{description}}</p>
-                        <div class="ai-chat-bedrock-mcp-tool-parameters">
-                            <h5>Parameters</h5>
-                            <ul>
-                                {{parameters}}
-                            </ul>
-                        </div>
-                    </div>
-                `;
-                
-                // Create a hidden template element
-                const tempDiv = document.createElement('div');
-                tempDiv.style.display = 'none';
-                tempDiv.innerHTML = `<script type="text/template" id="ai-chat-bedrock-mcp-tool-item-template">${fallbackTemplate}</script>`;
-                document.body.appendChild(tempDiv);
-            }
-            
-            const template = $('#ai-chat-bedrock-mcp-tool-item-template').html();
-            if (!template) {
-                console.error('Tool item template still not found after fallback');
-                
-                // Create a simple representation without template
-                tools.forEach(function(tool) {
-                    const $toolItem = $('<div>').addClass('ai-chat-bedrock-mcp-tool-item');
-                    $toolItem.append($('<h4>').text(tool.name || 'Unnamed Tool'));
-                    $toolItem.append($('<p>').addClass('description').text(tool.description || 'No description available'));
-                    
-                    const $parametersSection = $('<div>').addClass('ai-chat-bedrock-mcp-tool-parameters');
-                    $parametersSection.append($('<h5>').text('Parameters'));
-                    
-                    const $parametersList = $('<ul>');
-                    
-                    if (tool.parameters && tool.parameters.properties) {
-                        const properties = tool.parameters.properties;
-                        
-                        for (const key in properties) {
-                            if (properties.hasOwnProperty(key)) {
-                                const param = properties[key];
-                                const $paramItem = $('<li>');
-                                const $paramName = $('<strong>').text(key);
-                                $paramItem.append($paramName);
-                                $paramItem.append(': ' + (param.description || ''));
-                                
-                                if (param.required) {
-                                    $paramItem.append(' ');
-                                    $paramItem.append($('<span>').addClass('required').text('*'));
-                                }
-                                
-                                $parametersList.append($paramItem);
-                            }
-                        }
-                    }
-                    
-                    if ($parametersList.children().length === 0) {
-                        $parametersList.append($('<li>').text(ai_chat_bedrock_admin.i18n.no_parameters || 'No parameters required'));
-                    }
-                    
-                    $parametersSection.append($parametersList);
-                    $toolItem.append($parametersSection);
-                    
-                    $container.append($toolItem);
-                });
-                
+                $container.html('<p>No tools found for this server.</p>');
                 return;
             }
             
             tools.forEach(function(tool) {
-                let parametersHtml = '';
+                const $toolItem = $('<div>').addClass('ai-chat-bedrock-mcp-tool-item');
+                $toolItem.append($('<h4>').text(tool.name || 'Unnamed Tool'));
+                $toolItem.append($('<p>').addClass('description').text(tool.description || 'No description available'));
+                
+                const $parametersSection = $('<div>').addClass('ai-chat-bedrock-mcp-tool-parameters');
+                $parametersSection.append($('<h5>').text('Parameters'));
+                
+                const $parametersList = $('<ul>');
                 
                 if (tool.parameters && tool.parameters.properties) {
                     const properties = tool.parameters.properties;
@@ -502,24 +376,29 @@
                     for (const key in properties) {
                         if (properties.hasOwnProperty(key)) {
                             const param = properties[key];
-                            parametersHtml += '<li><strong>' + key + '</strong>: ' + 
-                                (param.description || '') + 
-                                (param.required ? ' <span class="required">*</span>' : '') + 
-                                '</li>';
+                            const $paramItem = $('<li>');
+                            const $paramName = $('<strong>').text(key);
+                            $paramItem.append($paramName);
+                            $paramItem.append(': ' + (param.description || ''));
+                            
+                            if (param.required) {
+                                $paramItem.append(' ');
+                                $paramItem.append($('<span>').addClass('required').text('*'));
+                            }
+                            
+                            $parametersList.append($paramItem);
                         }
                     }
                 }
                 
-                if (!parametersHtml) {
-                    parametersHtml = '<li>' + (ai_chat_bedrock_admin.i18n.no_parameters || 'No parameters required') + '</li>';
+                if ($parametersList.children().length === 0) {
+                    $parametersList.append($('<li>').text('No parameters required'));
                 }
                 
-                let html = template
-                    .replace(/{{name}}/g, tool.name || 'Unnamed Tool')
-                    .replace(/{{description}}/g, tool.description || 'No description available')
-                    .replace(/{{parameters}}/g, parametersHtml);
+                $parametersSection.append($parametersList);
+                $toolItem.append($parametersSection);
                 
-                $container.append(html);
+                $container.append($toolItem);
             });
         },
 
