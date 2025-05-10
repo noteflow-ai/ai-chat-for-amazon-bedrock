@@ -46,7 +46,7 @@
                 <tr>
                     <th scope="row"><?php esc_html_e('Server URL', 'ai-chat-for-amazon-bedrock'); ?></th>
                     <td>
-                        <input type="url" id="ai_chat_bedrock_wp_mcp_server_url" value="<?php echo esc_url(site_url('/wp-json')); ?>" class="regular-text">
+                        <input type="url" id="ai_chat_bedrock_wp_mcp_server_url" value="<?php echo esc_url(rest_url('ai-chat-bedrock/v1')); ?>" class="regular-text">
                         <p class="description"><?php esc_html_e('The URL of the WordPress REST API.', 'ai-chat-for-amazon-bedrock'); ?></p>
                     </td>
                 </tr>
@@ -326,7 +326,7 @@ jQuery(document).ready(function($) {
         // Call the tool directly via REST API
         const serverName = $('#ai_chat_bedrock_wp_mcp_server_name').val().trim();
         const serverUrl = $('#ai_chat_bedrock_wp_mcp_server_url').val().trim();
-        const toolUrl = serverUrl + 'mcp/tools/' + tool;
+        const toolUrl = serverUrl + '/mcp/tools/' + tool;
         
         $.ajax({
             url: toolUrl,

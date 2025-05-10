@@ -63,6 +63,38 @@ class AI_Chat_Bedrock {
 		$this->define_public_hooks();
 		$this->define_mcp_hooks();
 		$this->init_wp_mcp_server();
+		
+		// Register AJAX handlers
+		add_action('wp_ajax_ai_chat_bedrock_save_option', array($this, 'ajax_save_option'));
+	}
+	
+	/**
+	 * AJAX handler for saving a single option.
+	 *
+	 * @since    1.0.7
+	 */
+	public function ajax_save_option() {
+		// Check permissions
+		if (!current_user_can('manage_options')) {
+			wp_send_json_error(array('message' => __('Permission denied', 'ai-chat-for-amazon-bedrock')), 403);
+		}
+
+		// Verify nonce
+		if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_chat_bedrock_nonce')) {
+			wp_send_json_error(array('message' => __('Security check failed', 'ai-chat-for-amazon-bedrock')), 403);
+		}
+
+		// Get option details
+		$option_name = isset($_POST['option_name']) ? sanitize_text_field($_POST['option_name']) : '';
+		$option_value = isset($_POST['option_value']) ? sanitize_text_field($_POST['option_value']) : '';
+
+		if (empty($option_name)) {
+			wp_send_json_error(array('message' => __('Option name is required', 'ai-chat-for-amazon-bedrock')), 400);
+		}
+
+		// Save option
+		update_option($option_name, $option_value);
+		wp_send_json_success(array('message' => __('Option saved successfully', 'ai-chat-for-amazon-bedrock')));
 	}
 
 	/**
@@ -162,10 +194,14 @@ class AI_Chat_Bedrock {
 		$this->loader->add_action( 'admin_menu', $plugin_admin, 'add_plugin_admin_menu' );
 		$this->loader->add_action( 'admin_init', $plugin_admin, 'register_settings' );
 		
+		// Add this line to inject templates into admin head
+		$this->loader->add_action( 'admin_head', $plugin_admin, 'add_mcp_templates_to_admin_head' );
+		
 		// AJAX handlers
 		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_message', $plugin_admin, 'handle_chat_message' );
 		$this->loader->add_action( 'wp_ajax_nopriv_ai_chat_bedrock_message', $plugin_admin, 'handle_chat_message' );
 		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_clear_history', $plugin_admin, 'clear_chat_history' );
+		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_save_option', $plugin_admin, 'save_option' );
 	}
 
 	/**

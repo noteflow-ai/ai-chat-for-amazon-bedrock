@@ -153,14 +153,14 @@ class AI_Chat_Bedrock_WP_MCP_Server {
     private function register_routes() {
         add_action('rest_api_init', function () {
             // MCP discovery endpoint
-            register_rest_route('mcp', '/discover', array(
+            register_rest_route('ai-chat-bedrock/v1/mcp', '/discover', array(
                 'methods' => 'GET',
                 'callback' => array($this, 'handle_discover'),
                 'permission_callback' => '__return_true',
             ));
 
             // MCP health endpoint
-            register_rest_route('mcp', '/health', array(
+            register_rest_route('ai-chat-bedrock/v1/mcp', '/health', array(
                 'methods' => 'GET',
                 'callback' => array($this, 'handle_health'),
                 'permission_callback' => '__return_true',
@@ -168,7 +168,7 @@ class AI_Chat_Bedrock_WP_MCP_Server {
 
             // MCP tools endpoints
             foreach ($this->tools as $tool_name => $tool) {
-                register_rest_route('mcp/tools', '/' . $tool_name, array(
+                register_rest_route('ai-chat-bedrock/v1/mcp/tools', '/' . $tool_name, array(
                     'methods' => 'POST',
                     'callback' => array($this, 'handle_tool_' . $tool_name),
                     'permission_callback' => '__return_true',

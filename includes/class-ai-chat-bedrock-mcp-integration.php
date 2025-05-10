@@ -150,8 +150,12 @@ class AI_Chat_Bedrock_MCP_Integration {
         $servers = $this->mcp_client->get_servers();
 
         // Check server availability
-        foreach ($servers as $name => &$server) {
-            $server['available'] = $this->mcp_client->is_server_available($name);
+        if (is_array($servers)) {
+            foreach ($servers as $name => &$server) {
+                $server['available'] = $this->mcp_client->is_server_available($name);
+            }
+        } else {
+            $servers = array();
         }
 
         wp_send_json_success(array('servers' => $servers));
