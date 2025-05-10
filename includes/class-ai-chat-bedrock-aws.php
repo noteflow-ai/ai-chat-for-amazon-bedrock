@@ -88,6 +88,11 @@ class AI_Chat_Bedrock_AWS {
 		// Format the message based on the model
 		$payload = $this->format_payload_for_model( $model_id, $message_data, $max_tokens, $temperature );
 		
+		// Debug log the full payload
+		if ($this->debug) {
+			$this->log_debug('Full payload before sending:', $payload);
+		}
+		
 		// 根据后台设置决定是否使用流式处理
 		if ( $enable_streaming && isset( $message_data['streaming_callback'] ) ) {
 			// 使用流式处理
@@ -150,6 +155,9 @@ class AI_Chat_Bedrock_AWS {
 			'max_tokens' => $max_tokens,
 			'temperature' => $temperature,
 		);
+		
+		// Store original payload for tools and other extensions
+		$original_payload = $message_data;
 		
 		// Format based on model provider
 		if ( strpos( $model_id, 'anthropic.claude' ) !== false ) {
@@ -220,6 +228,16 @@ class AI_Chat_Bedrock_AWS {
 			}
 			
 			$payload['messages'] = $formatted_messages;
+			
+			// Add tools to payload if available
+			if (isset($original_payload['tools']) && !empty($original_payload['tools'])) {
+				$payload['tools'] = $original_payload['tools'];
+				$this->log_debug('Adding tools to Claude payload:', $payload['tools']);
+				
+				// Add tool_choice to indicate the model should use tools when appropriate
+				// Format as object with type field, not just a string
+				$payload['tool_choice'] = array('type' => 'auto');
+			}
 			
 			if ( $this->debug ) {
 				$this->log_debug( 'Formatted Claude Messages:', $formatted_messages );
@@ -859,6 +877,7 @@ class AI_Chat_Bedrock_AWS {
 	 */
 	private function parse_model_response( $response_data, $model_id ) {
 		$content = '';
+		$tool_calls = array();
 		
 		if ( $this->debug ) {
 			$this->log_debug( 'Parsing response for model:', $model_id );
@@ -896,11 +915,25 @@ class AI_Chat_Bedrock_AWS {
 				foreach ( $response_data['content'] as $content_block ) {
 					if ( isset( $content_block['type'] ) && $content_block['type'] === 'text' && isset( $content_block['text'] ) ) {
 						$content .= $content_block['text'];
+					} else if ( isset( $content_block['type'] ) && $content_block['type'] === 'tool_use' ) {
+						// Extract tool calls from Claude response
+						$tool_calls[] = array(
+							'id' => isset($content_block['id']) ? $content_block['id'] : uniqid('tool_call_'),
+							'name' => $content_block['name'],
+							'parameters' => isset($content_block['input']) ? $content_block['input'] : array(),
+						);
+						
+						if ( $this->debug ) {
+							$this->log_debug( 'Found tool call in Claude response:', $content_block );
+						}
 					}
 				}
 				
 				if ( $this->debug ) {
 					$this->log_debug( 'Extracted content from Claude response:', $content );
+					if (!empty($tool_calls)) {
+						$this->log_debug( 'Extracted tool calls from Claude response:', $tool_calls );
+					}
 				}
 			}
 		} else if ( strpos( $model_id, 'deepseek' ) !== false ) {
@@ -929,12 +962,19 @@ class AI_Chat_Bedrock_AWS {
 			$this->log_debug( 'Warning: Failed to extract content from response', '' );
 		}
 		
-		return array(
+		$result = array(
 			'success' => true,
 			'data' => array(
 				'message' => $content,  // 修改结构为前端期望的格式
 			),
 		);
+		
+		// Add tool calls to response if any
+		if (!empty($tool_calls)) {
+			$result['tool_calls'] = $tool_calls;
+		}
+		
+		return $result;
 	}
 
 	/**

@@ -1,6 +1,6 @@
 === AI Chat for Amazon Bedrock ===
 Contributors: glay
-Tags: ai, chat, amazon, bedrock, claude
+Tags: ai, chat, mcp, bedrock, claude
 Requires at least: 5.0
 Tested up to: 6.8
 Stable tag: 1.0.6

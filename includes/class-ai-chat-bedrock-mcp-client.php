@@ -294,10 +294,35 @@ class AI_Chat_Bedrock_MCP_Client {
                     // Add server name prefix to tool name
                     $prefixed_tool = $tool;
                     $prefixed_tool['name'] = $server_name . '___' . $tool['name'];
+                    
+                    // Make sure parameters are properly formatted
+                    if (!isset($prefixed_tool['parameters']) || !is_array($prefixed_tool['parameters'])) {
+                        $prefixed_tool['parameters'] = array(
+                            'type' => 'object',
+                            'properties' => new stdClass(), // Use stdClass for empty object
+                            'required' => array()
+                        );
+                    }
+                    
+                    // Ensure properties exists and is an object, not an array
+                    if (!isset($prefixed_tool['parameters']['properties'])) {
+                        $prefixed_tool['parameters']['properties'] = new stdClass(); // Use stdClass for empty object
+                    } else if (is_array($prefixed_tool['parameters']['properties']) && empty($prefixed_tool['parameters']['properties'])) {
+                        // Convert empty array to stdClass for proper JSON encoding as {}
+                        $prefixed_tool['parameters']['properties'] = new stdClass();
+                    }
+                    
+                    // Ensure required exists
+                    if (!isset($prefixed_tool['parameters']['required'])) {
+                        $prefixed_tool['parameters']['required'] = array();
+                    }
+                    
                     $all_tools[] = $prefixed_tool;
                 }
             }
         }
+        
+        error_log('AI Chat Bedrock Debug - All MCP tools: ' . print_r($all_tools, true));
 
         return $all_tools;
     }

@@ -210,23 +210,44 @@ class AI_Chat_Bedrock_MCP_Integration {
         $enable_mcp = get_option('ai_chat_bedrock_enable_mcp', false);
         
         if (!$enable_mcp) {
+            error_log('AI Chat Bedrock Debug - MCP is disabled, not adding tools to payload');
             return $payload;
         }
 
         // Get all available tools from MCP servers
         $mcp_tools = $this->mcp_client->get_all_tools();
+        error_log('AI Chat Bedrock Debug - MCP tools before formatting: ' . print_r($mcp_tools, true));
         
         if (empty($mcp_tools)) {
+            error_log('AI Chat Bedrock Debug - No MCP tools found');
             return $payload;
         }
 
-        // Add tools to payload
-        if (!isset($payload['tools'])) {
-            $payload['tools'] = array();
+        // Format tools for Claude
+        $claude_tools = [];
+        foreach ($mcp_tools as $tool) {
+            // Ensure properties is an object, not an array
+            $properties = isset($tool['parameters']['properties']) ? $tool['parameters']['properties'] : new stdClass();
+            if (is_array($properties) && empty($properties)) {
+                $properties = new stdClass(); // Convert empty array to empty object
+            }
+            
+            $claude_tools[] = [
+                'name' => $tool['name'],
+                'description' => $tool['description'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => $properties,
+                    'required' => isset($tool['parameters']['required']) ? $tool['parameters']['required'] : []
+                ]
+            ];
         }
 
-        // Merge MCP tools with existing tools
-        $payload['tools'] = array_merge($payload['tools'], $mcp_tools);
+        // Add tools to payload
+        $payload['tools'] = $claude_tools;
+        
+        error_log('AI Chat Bedrock Debug - Tools added to payload: ' . print_r($claude_tools, true));
+        error_log('AI Chat Bedrock Debug - Final payload with tools: ' . print_r($payload, true));
 
         return $payload;
     }
@@ -240,15 +261,42 @@ class AI_Chat_Bedrock_MCP_Integration {
      * @return   array                  Modified response after processing tool calls.
      */
     public function process_mcp_tool_calls($response, $message) {
-        // Check if response contains tool calls
-        if (!isset($response['tool_calls']) || empty($response['tool_calls'])) {
+        // Initialize tool_calls array if not present
+        if (!isset($response['tool_calls'])) {
+            $response['tool_calls'] = array();
+        }
+        
+        // Check for Claude 3.7 format tool calls in content array
+        if (isset($response['content']) && is_array($response['content'])) {
+            error_log('AI Chat Bedrock Debug - Checking for tool calls in content array');
+            
+            foreach ($response['content'] as $content_item) {
+                if (isset($content_item['type']) && $content_item['type'] === 'tool_use') {
+                    error_log('AI Chat Bedrock Debug - Found tool_use in content: ' . print_r($content_item, true));
+                    
+                    // Add to tool_calls array for consistent processing
+                    $response['tool_calls'][] = array(
+                        'id' => isset($content_item['id']) ? $content_item['id'] : uniqid('tool_call_'),
+                        'name' => $content_item['name'],
+                        'parameters' => isset($content_item['input']) ? $content_item['input'] : array(),
+                    );
+                }
+            }
+        }
+        
+        // If still no tool calls, return the original response
+        if (empty($response['tool_calls'])) {
+            error_log('AI Chat Bedrock Debug - No tool calls found in response');
             return $response;
         }
+
+        error_log('AI Chat Bedrock Debug - Processing tool calls: ' . print_r($response['tool_calls'], true));
 
         // Process each tool call
         foreach ($response['tool_calls'] as $key => $tool_call) {
             // Check if this is an MCP tool call (contains ___ separator)
             if (strpos($tool_call['name'], '___') === false) {
+                error_log('AI Chat Bedrock Debug - Not an MCP tool call: ' . $tool_call['name']);
                 continue;
             }
 
@@ -259,8 +307,12 @@ class AI_Chat_Bedrock_MCP_Integration {
 
             // Skip if server or tool name is empty
             if (empty($server_name) || empty($tool_name)) {
+                error_log('AI Chat Bedrock Debug - Empty server or tool name');
                 continue;
             }
+
+            error_log('AI Chat Bedrock Debug - Calling MCP tool: ' . $server_name . '___' . $tool_name);
+            error_log('AI Chat Bedrock Debug - Tool parameters: ' . print_r(isset($tool_call['parameters']) ? $tool_call['parameters'] : array(), true));
 
             // Call the MCP tool
             $result = $this->mcp_client->call_tool(
@@ -272,11 +324,13 @@ class AI_Chat_Bedrock_MCP_Integration {
             // Update the tool call with the result
             if (!is_wp_error($result)) {
                 $response['tool_calls'][$key]['result'] = $result;
+                error_log('AI Chat Bedrock Debug - Tool call result: ' . print_r($result, true));
             } else {
                 $response['tool_calls'][$key]['error'] = array(
                     'message' => $result->get_error_message(),
                     'code' => $result->get_error_code(),
                 );
+                error_log('AI Chat Bedrock Debug - Tool call error: ' . $result->get_error_message());
             }
         }
 
