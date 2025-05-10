@@ -146,3 +146,114 @@
         max-width: 300px;
     }
 }
+/* MCP Test Page Styles */
+.ai-chat-bedrock-test-chat {
+    max-width: 800px;
+    margin: 20px 0;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.ai-chat-bedrock-test-chat-header {
+    background-color: #f5f5f5;
+    padding: 10px 15px;
+    border-bottom: 1px solid #ddd;
+}
+
+.ai-chat-bedrock-test-chat-header h4 {
+    margin: 0;
+}
+
+.ai-chat-bedrock-test-chat-messages {
+    height: 400px;
+    padding: 15px;
+    overflow-y: auto;
+    background-color: #fff;
+}
+
+.ai-chat-bedrock-test-chat-input {
+    display: flex;
+    padding: 10px;
+    background-color: #f5f5f5;
+    border-top: 1px solid #ddd;
+}
+
+.ai-chat-bedrock-test-chat-input textarea {
+    flex: 1;
+    min-height: 60px;
+    margin-right: 10px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+
+.ai-chat-bedrock-message {
+    margin-bottom: 15px;
+}
+
+.ai-chat-bedrock-message-user,
+.ai-chat-bedrock-message-assistant {
+    padding: 10px 15px;
+    border-radius: 5px;
+    max-width: 80%;
+}
+
+.ai-chat-bedrock-message-user {
+    background-color: #e3f2fd;
+    margin-left: auto;
+    text-align: right;
+}
+
+.ai-chat-bedrock-message-assistant {
+    background-color: #f5f5f5;
+    margin-right: auto;
+}
+
+.ai-chat-bedrock-loading {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid #ddd;
+    border-radius: 50%;
+    border-top-color: #666;
+    animation: ai-chat-bedrock-spin 1s linear infinite;
+    margin-right: 5px;
+}
+
+@keyframes ai-chat-bedrock-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Tool usage styling */
+.ai-chat-bedrock-tool-indicator {
+    margin-top: 10px;
+    padding: 8px;
+    background-color: #f0f0f0;
+    border-radius: 5px;
+    font-size: 0.9em;
+}
+
+.ai-chat-bedrock-tool-name {
+    font-weight: bold;
+    color: #555;
+}
+
+.ai-chat-bedrock-tool-loading {
+    display: inline-block;
+    margin-left: 10px;
+}
+
+.ai-chat-bedrock-tool-result {
+    font-size: 0.9em;
+}
+
+.ai-chat-bedrock-tool-success {
+    color: #28a745;
+}
+
+.ai-chat-bedrock-tool-error {
+    color: #dc3545;
+}

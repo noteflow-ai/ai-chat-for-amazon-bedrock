@@ -120,4 +120,120 @@ class AI_Chat_Bedrock_Public {
 		// Return the buffered content
 		return ob_get_clean();
 	}
+	
+	/**
+	 * Handle AJAX request for chat messages.
+	 *
+	 * @since    1.0.0
+	 */
+	public function handle_chat_message() {
+		// Check nonce
+		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'ai_chat_bedrock_nonce' ) ) {
+			wp_send_json_error( array( 'message' => 'Invalid security token.' ) );
+		}
+		
+		// Get message and history
+		$message = isset( $_POST['message'] ) ? sanitize_text_field( $_POST['message'] ) : '';
+		$history = isset( $_POST['history'] ) ? json_decode( stripslashes( $_POST['history'] ), true ) : array();
+		
+		if ( empty( $message ) ) {
+			wp_send_json_error( array( 'message' => 'Message is required.' ) );
+		}
+		
+		// Get AWS instance
+		$aws = new AI_Chat_Bedrock_AWS();
+		
+		// Send to AWS Bedrock
+		$response = $aws->handle_chat_message( array( 'messages' => $history, 'message' => $message ) );
+		
+		// Return the response
+		wp_send_json( $response );
+	}
+	
+	/**
+	 * Handle AJAX request to clear chat history.
+	 *
+	 * @since    1.0.0
+	 */
+	public function clear_chat_history() {
+		// Check nonce
+		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'ai_chat_bedrock_nonce' ) ) {
+			wp_send_json_error( array( 'message' => 'Invalid security token.' ) );
+		}
+		
+		// Return success
+		wp_send_json_success( array( 'message' => 'Chat history cleared.' ) );
+	}
+	
+	/**
+	 * Handle AJAX request for tool results.
+	 *
+	 * @since    1.0.7
+	 */
+	public function handle_tool_results() {
+		// Check nonce
+		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'ai_chat_bedrock_nonce' ) ) {
+			wp_send_json_error( array( 'message' => 'Invalid security token.' ) );
+		}
+		
+		// Get tool calls and original message
+		$tool_calls = isset( $_POST['tool_calls'] ) ? json_decode( stripslashes( $_POST['tool_calls'] ), true ) : array();
+		$original_message = isset( $_POST['original_message'] ) ? sanitize_text_field( $_POST['original_message'] ) : '';
+		$history = isset( $_POST['history'] ) ? json_decode( stripslashes( $_POST['history'] ), true ) : array();
+		
+		if ( empty( $tool_calls ) ) {
+			wp_send_json_error( array( 'message' => 'No tool calls provided.' ) );
+		}
+		
+		// Log the tool calls
+		error_log( 'AI Chat Bedrock - Tool calls received: ' . print_r( $tool_calls, true ) );
+		
+		// Create a new message array with the tool results
+		$messages = array();
+		
+		// Add history messages
+		if ( ! empty( $history ) ) {
+			foreach ( $history as $msg ) {
+				$messages[] = $msg;
+			}
+		}
+		
+		// Add the original user message if not in history
+		if ( ! empty( $original_message ) ) {
+			$messages[] = array( 'role' => 'user', 'content' => $original_message );
+		}
+		
+		// Add the assistant's response with tool calls
+		$messages[] = array( 
+			'role' => 'assistant', 
+			'content' => 'I need to search for information about your query.',
+			'tool_calls' => $tool_calls
+		);
+		
+		// Add a user message with tool results
+		$tool_results_message = "I've found the following information:\n\n";
+		foreach ($tool_calls as $tool_call) {
+			if (isset($tool_call['result'])) {
+				$tool_name = explode('___', $tool_call['name'])[1] ?? $tool_call['name'];
+				$tool_results_message .= "Results from " . $tool_name . ":\n";
+				$tool_results_message .= json_encode($tool_call['result'], JSON_PRETTY_PRINT);
+				$tool_results_message .= "\n\n";
+			}
+		}
+		$tool_results_message .= "Please provide a complete and helpful response based on these results.";
+		
+		$messages[] = array(
+			'role' => 'user',
+			'content' => $tool_results_message
+		);
+		
+		// Get AWS instance
+		$aws = new AI_Chat_Bedrock_AWS();
+		
+		// Send to AWS Bedrock
+		$response = $aws->handle_chat_message( array( 'messages' => $messages ) );
+		
+		// Return the response
+		wp_send_json( $response );
+	}
 }

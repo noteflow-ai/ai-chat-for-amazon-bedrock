@@ -219,6 +219,14 @@ class AI_Chat_Bedrock {
 		
 		// Register shortcode
 		$this->loader->add_shortcode( 'ai_chat_bedrock', $plugin_public, 'display_chat_interface' );
+		
+		// Register AJAX handlers for public-facing functionality
+		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_message', $plugin_public, 'handle_chat_message' );
+		$this->loader->add_action( 'wp_ajax_nopriv_ai_chat_bedrock_message', $plugin_public, 'handle_chat_message' );
+		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_clear_history', $plugin_public, 'clear_chat_history' );
+		$this->loader->add_action( 'wp_ajax_nopriv_ai_chat_bedrock_clear_history', $plugin_public, 'clear_chat_history' );
+		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_tool_results', $plugin_public, 'handle_tool_results' );
+		$this->loader->add_action( 'wp_ajax_nopriv_ai_chat_bedrock_tool_results', $plugin_public, 'handle_tool_results' );
 	}
 
 	/**

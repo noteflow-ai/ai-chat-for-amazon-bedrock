@@ -484,12 +484,122 @@
 					
 					if (response.success) {
 						console.log('Response success, message:', response.data?.message);
-						// Add AI response to chat
-						addMessage(response.data.message);
+						
+						// Check if response contains tool calls
+						if (response.tool_calls && response.tool_calls.length > 0) {
+							console.log('Response contains tool calls:', response.tool_calls);
+							
+							// Show a message that tools are being used
+							const $toolMessage = $(`
+								<div class="ai-chat-bedrock-message ai-message ai-chat-bedrock-tool-message">
+									<div class="ai-chat-bedrock-avatar">
+										<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="none" d="M0 0h24v24H0z"/><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 3a3 3 0 0 1 3 3v1h1a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h1v-1a3 3 0 0 1 3-3zm0 2a1 1 0 0 0-1 1v1h2v-1a1 1 0 0 0-1-1z" fill="currentColor"/></svg>
+									</div>
+									<div class="ai-chat-bedrock-message-content">
+										${formatMessage(response.data.message)}
+										<div class="ai-chat-bedrock-tool-indicator">
+											<span class="ai-chat-bedrock-tool-name">Using tool: ${response.tool_calls[0].name.split('___')[1]}</span>
+											<div class="ai-chat-bedrock-tool-loading">
+												<div class="ai-chat-bedrock-typing-dot"></div>
+												<div class="ai-chat-bedrock-typing-dot"></div>
+												<div class="ai-chat-bedrock-typing-dot"></div>
+											</div>
+										</div>
+									</div>
+								</div>
+							`);
+							$messagesContainer.append($toolMessage);
+							scrollToBottom();
+							
+							// Add initial message to chat history
+							chatHistory.push({ role: 'assistant', content: response.data.message });
+							
+							// Send tool results back to get final answer
+							const toolResultsOptions = {
+								url: ai_chat_bedrock_params.ajax_url,
+								method: 'POST',
+								data: {
+									action: 'ai_chat_bedrock_tool_results',
+									nonce: ai_chat_bedrock_params.nonce,
+									tool_calls: JSON.stringify(response.tool_calls),
+									original_message: options.data.message,
+									history: options.data.history
+								}
+							};
+							
+							console.log('Sending tool results request:', toolResultsOptions);
+							
+							// Show typing indicator for final response
+							const $finalTyping = showTypingIndicator();
+							
+							// Make request to get final answer
+							$.ajax(toolResultsOptions)
+								.done(function(finalResponse) {
+									// Remove typing indicator
+									removeTypingIndicator($finalTyping);
+									
+									console.log('Received final response:', finalResponse);
+									
+									if (finalResponse.success) {
+										// Update the tool message with results
+										$toolMessage.find('.ai-chat-bedrock-tool-indicator').html(`
+											<div class="ai-chat-bedrock-tool-result">
+												<span class="ai-chat-bedrock-tool-success">✓ Tool used successfully</span>
+											</div>
+										`);
+										
+										// Add final AI response to chat
+										addMessage(finalResponse.data.message);
+									} else {
+										// Show error in tool message
+										$toolMessage.find('.ai-chat-bedrock-tool-indicator').html(`
+											<div class="ai-chat-bedrock-tool-result">
+												<span class="ai-chat-bedrock-tool-error">✗ Tool error</span>
+											</div>
+										`);
+										
+										// Show error message
+										showError(finalResponse.data?.message || 'An error occurred while processing tool results.');
+									}
+								})
+								.fail(function(xhr, status, error) {
+									// Remove typing indicator
+									removeTypingIndicator($finalTyping);
+									
+									// Show error in tool message
+									$toolMessage.find('.ai-chat-bedrock-tool-indicator').html(`
+										<div class="ai-chat-bedrock-tool-result">
+											<span class="ai-chat-bedrock-tool-error">✗ Tool error</span>
+										</div>
+									`);
+									
+									// Show error message
+									showError('Error: ' + (error || 'Could not process tool results.'));
+								})
+								.always(function() {
+									// Re-enable form
+									$textarea.prop('disabled', false);
+									$submitButton.prop('disabled', false);
+									$textarea.focus();
+								});
+						} else {
+							// Regular response without tool calls
+							addMessage(response.data.message);
+							
+							// Re-enable form
+							$textarea.prop('disabled', false);
+							$submitButton.prop('disabled', false);
+							$textarea.focus();
+						}
 					} else {
 						console.error('Response error:', response.data?.message);
 						// Show error message
 						showError(response.data?.message || 'An error occurred while processing your request.');
+						
+						// Re-enable form
+						$textarea.prop('disabled', false);
+						$submitButton.prop('disabled', false);
+						$textarea.focus();
 					}
 				})
 				.fail(function(xhr, status, error) {
@@ -499,14 +609,14 @@
 					
 					// Show error message
 					showError('Error: ' + (error || 'Could not connect to the server.'));
-				})
-				.always(function() {
+					
 					// Re-enable form
 					$textarea.prop('disabled', false);
 					$submitButton.prop('disabled', false);
 					$textarea.focus();
 				});
 		}
+		
 		
 		// Function to clear chat history
 		function clearChat() {

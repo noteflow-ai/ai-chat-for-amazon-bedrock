@@ -405,13 +405,85 @@ jQuery(document).ready(function($) {
                 $loadingMessage.remove();
                 
                 if (response.success) {
-                    // Add AI response to chat
-                    const aiMessage = response.data.message || 'Sorry, I couldn\'t process your request.';
-                    $chatMessages.append('<div class="ai-chat-bedrock-message"><div class="ai-chat-bedrock-message-assistant">' + formatMessage(aiMessage) + '</div></div>');
-                    
-                    // Update chat history
-                    chatHistory.push({ role: 'user', content: message });
-                    chatHistory.push({ role: 'assistant', content: aiMessage });
+                    // Check if response contains tool calls
+                    if (response.tool_calls && response.tool_calls.length > 0) {
+                        // Show tool usage message
+                        const toolName = response.tool_calls[0].name.split('___')[1];
+                        const toolMessage = response.data.message || 'Using WordPress tools to find information...';
+                        
+                        const $toolMessage = $('<div class="ai-chat-bedrock-message"><div class="ai-chat-bedrock-message-assistant">' + 
+                            formatMessage(toolMessage) + 
+                            '<div class="ai-chat-bedrock-tool-indicator">' +
+                            '<span class="ai-chat-bedrock-tool-name">Using tool: ' + escapeHtml(toolName) + '</span>' +
+                            '<div class="ai-chat-bedrock-tool-loading"><span class="ai-chat-bedrock-loading"></span></div>' +
+                            '</div></div></div>');
+                        
+                        $chatMessages.append($toolMessage);
+                        $chatMessages.scrollTop($chatMessages[0].scrollHeight);
+                        
+                        // Process tool results
+                        $.ajax({
+                            url: ajaxurl,
+                            type: 'POST',
+                            data: {
+                                action: 'ai_chat_bedrock_tool_results',
+                                nonce: ai_chat_bedrock_admin.nonce,
+                                tool_calls: JSON.stringify(response.tool_calls),
+                                original_message: message,
+                                history: JSON.stringify(chatHistory)
+                            },
+                            success: function(finalResponse) {
+                                // Update tool indicator
+                                $toolMessage.find('.ai-chat-bedrock-tool-indicator').html(
+                                    '<div class="ai-chat-bedrock-tool-result">' +
+                                    '<span class="ai-chat-bedrock-tool-success">✓ Tool used successfully</span>' +
+                                    '</div>'
+                                );
+                                
+                                if (finalResponse.success) {
+                                    // Add final AI response
+                                    const finalMessage = finalResponse.data.message || 'Here are the results.';
+                                    $chatMessages.append('<div class="ai-chat-bedrock-message"><div class="ai-chat-bedrock-message-assistant">' + 
+                                        formatMessage(finalMessage) + '</div></div>');
+                                    
+                                    // Update chat history
+                                    chatHistory.push({ role: 'user', content: message });
+                                    chatHistory.push({ role: 'assistant', content: toolMessage });
+                                    chatHistory.push({ role: 'assistant', content: finalMessage });
+                                } else {
+                                    // Show error
+                                    const errorMessage = finalResponse.data.message || 'Error processing tool results.';
+                                    $chatMessages.append('<div class="ai-chat-bedrock-message"><div class="ai-chat-bedrock-message-assistant">Error: ' + 
+                                        escapeHtml(errorMessage) + '</div></div>');
+                                }
+                                
+                                // Scroll to bottom
+                                $chatMessages.scrollTop($chatMessages[0].scrollHeight);
+                            },
+                            error: function() {
+                                // Update tool indicator with error
+                                $toolMessage.find('.ai-chat-bedrock-tool-indicator').html(
+                                    '<div class="ai-chat-bedrock-tool-result">' +
+                                    '<span class="ai-chat-bedrock-tool-error">✗ Tool error</span>' +
+                                    '</div>'
+                                );
+                                
+                                // Show error message
+                                $chatMessages.append('<div class="ai-chat-bedrock-message"><div class="ai-chat-bedrock-message-assistant">Error: Could not process tool results.</div></div>');
+                                
+                                // Scroll to bottom
+                                $chatMessages.scrollTop($chatMessages[0].scrollHeight);
+                            }
+                        });
+                    } else {
+                        // Regular response without tool calls
+                        const aiMessage = response.data.message || 'Sorry, I couldn\'t process your request.';
+                        $chatMessages.append('<div class="ai-chat-bedrock-message"><div class="ai-chat-bedrock-message-assistant">' + formatMessage(aiMessage) + '</div></div>');
+                        
+                        // Update chat history
+                        chatHistory.push({ role: 'user', content: message });
+                        chatHistory.push({ role: 'assistant', content: aiMessage });
+                    }
                     
                     // Limit history size
                     if (chatHistory.length > 20) {
