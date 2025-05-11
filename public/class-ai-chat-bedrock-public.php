@@ -72,13 +72,41 @@ class AI_Chat_Bedrock_Public {
 		$options = get_option( 'ai_chat_bedrock_settings' );
 		$welcome_message = isset( $options['welcome_message'] ) ? $options['welcome_message'] : __( 'Hello! How can I help you today?', 'ai-chat-bedrock' );
 		$enable_streaming = isset( $options['enable_streaming'] ) && $options['enable_streaming'] === 'on';
+		$enable_voice = isset( $options['enable_voice'] ) && $options['enable_voice'] === 'on';
 		
 		wp_localize_script( $this->plugin_name, 'ai_chat_bedrock_params', array(
 			'ajax_url' => admin_url( 'admin-ajax.php' ),
 			'nonce' => wp_create_nonce( 'ai_chat_bedrock_nonce' ),
 			'welcome_message' => $welcome_message,
 			'enable_streaming' => $enable_streaming,
+			'enable_voice' => $enable_voice,
 		) );
+		
+		// 加载语音交互脚本和样式
+		if ($enable_voice) {
+			wp_enqueue_script( 'ai-chat-bedrock-voice', plugin_dir_url( __FILE__ ) . 'js/ai-chat-bedrock-voice.js', array( 'jquery', $this->plugin_name ), $this->version, true );
+			wp_enqueue_style( 'ai-chat-bedrock-voice', plugin_dir_url( __FILE__ ) . 'css/ai-chat-bedrock-voice.css', array(), $this->version, 'all' );
+			
+			// 传递语音设置到前端
+			$voice_id = isset( $options['voice_id'] ) ? $options['voice_id'] : 'alloy';
+			$sample_rate = isset( $options['speech_sample_rate'] ) ? intval( $options['speech_sample_rate'] ) : 24000;
+			
+			wp_localize_script( 'ai-chat-bedrock-voice', 'aiChatBedrockVoiceParams', array(
+				'ajax_url' => admin_url( 'admin-ajax.php' ),
+				'nonce' => wp_create_nonce( 'ai_chat_bedrock_voice_nonce' ),
+				'voice_enabled' => $enable_voice,
+				'voice_id' => $voice_id,
+				'sample_rate' => $sample_rate,
+				'i18n' => array(
+					'start_recording' => __( '开始录音', 'ai-chat-for-amazon-bedrock' ),
+					'stop_recording' => __( '停止录音', 'ai-chat-for-amazon-bedrock' ),
+					'listening' => __( '正在听...', 'ai-chat-for-amazon-bedrock' ),
+					'processing' => __( '处理中...', 'ai-chat-for-amazon-bedrock' ),
+					'error_microphone' => __( '无法访问麦克风', 'ai-chat-for-amazon-bedrock' ),
+					'error_speech' => __( '语音识别失败', 'ai-chat-for-amazon-bedrock' )
+				)
+			) );
+		}
 	}
 
 	/**

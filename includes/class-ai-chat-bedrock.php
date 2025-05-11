@@ -161,6 +161,16 @@ class AI_Chat_Bedrock {
 		 * The class responsible for WordPress MCP server implementation.
 		 */
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-ai-chat-bedrock-wp-mcp-server.php';
+		
+		/**
+		 * The class responsible for voice interaction functionality.
+		 */
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-ai-chat-bedrock-voice-interaction.php';
+		
+		/**
+		 * The class responsible for Nova Sonic streaming functionality.
+		 */
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-ai-chat-bedrock-nova-sonic.php';
 
 		$this->loader = new AI_Chat_Bedrock_Loader();
 	}
@@ -227,6 +237,13 @@ class AI_Chat_Bedrock {
 		$this->loader->add_action( 'wp_ajax_nopriv_ai_chat_bedrock_clear_history', $plugin_public, 'clear_chat_history' );
 		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_tool_results', $plugin_public, 'handle_tool_results' );
 		$this->loader->add_action( 'wp_ajax_nopriv_ai_chat_bedrock_tool_results', $plugin_public, 'handle_tool_results' );
+		
+		// Initialize voice interaction
+		$voice_interaction = new AI_Chat_Bedrock_Voice_Interaction();
+		
+		// Register AJAX handlers for voice interaction
+		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_bidirectional_voice_chat', $voice_interaction, 'handle_bidirectional_voice_chat' );
+		$this->loader->add_action( 'wp_ajax_nopriv_ai_chat_bedrock_bidirectional_voice_chat', $voice_interaction, 'handle_bidirectional_voice_chat' );
 	}
 
 	/**

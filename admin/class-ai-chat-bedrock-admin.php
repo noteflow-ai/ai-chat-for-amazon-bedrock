@@ -146,13 +146,41 @@ class AI_Chat_Bedrock_Admin {
 			$options = get_option( 'ai_chat_bedrock_settings' );
 			$welcome_message = isset( $options['welcome_message'] ) ? $options['welcome_message'] : __( 'Hello! How can I help you today?', 'ai-chat-bedrock' );
 			$enable_streaming = isset( $options['enable_streaming'] ) && $options['enable_streaming'] === 'on';
+			$enable_voice = isset( $options['enable_voice'] ) && $options['enable_voice'] === 'on';
 			
 			wp_localize_script( $this->plugin_name . '-public', 'ai_chat_bedrock_params', array(
 				'ajax_url' => admin_url( 'admin-ajax.php' ),
 				'nonce' => wp_create_nonce( 'ai_chat_bedrock_nonce' ),
 				'welcome_message' => $welcome_message,
 				'enable_streaming' => $enable_streaming,
+				'enable_voice' => $enable_voice,
 			) );
+			
+			// 加载语音交互脚本和样式
+			if ($enable_voice) {
+				wp_enqueue_script( 'ai-chat-bedrock-voice', plugin_dir_url( dirname( __FILE__ ) ) . 'public/js/ai-chat-bedrock-voice.js', array( 'jquery', $this->plugin_name . '-public' ), $this->version, true );
+				wp_enqueue_style( 'ai-chat-bedrock-voice', plugin_dir_url( dirname( __FILE__ ) ) . 'public/css/ai-chat-bedrock-voice.css', array(), $this->version, 'all' );
+				
+				// 传递语音设置到前端
+				$voice_id = isset( $options['voice_id'] ) ? $options['voice_id'] : 'tiffany';
+				$sample_rate = isset( $options['speech_sample_rate'] ) ? (int)$options['speech_sample_rate'] : 24000;
+				
+				wp_localize_script( 'ai-chat-bedrock-voice', 'aiChatBedrockVoiceParams', array(
+					'ajax_url' => admin_url( 'admin-ajax.php' ),
+					'nonce' => wp_create_nonce( 'ai_chat_bedrock_voice_nonce' ),
+					'voice_enabled' => $enable_voice,
+					'voice_id' => $voice_id,
+					'sample_rate' => $sample_rate,
+					'i18n' => array(
+						'start_recording' => __( '开始录音', 'ai-chat-for-amazon-bedrock' ),
+						'stop_recording' => __( '停止录音', 'ai-chat-for-amazon-bedrock' ),
+						'listening' => __( '正在听...', 'ai-chat-for-amazon-bedrock' ),
+						'processing' => __( '处理中...', 'ai-chat-for-amazon-bedrock' ),
+						'error_microphone' => __( '无法访问麦克风', 'ai-chat-for-amazon-bedrock' ),
+						'error_speech' => __( '语音识别失败', 'ai-chat-for-amazon-bedrock' )
+					)
+				) );
+			}
 		}
 		
 		wp_localize_script( $this->plugin_name, 'ai_chat_bedrock_admin', array(
@@ -318,6 +346,37 @@ class AI_Chat_Bedrock_Admin {
 			array( $this, 'enable_streaming_render' ),
 			'ai_chat_bedrock_settings',
 			'ai_chat_bedrock_model_settings'
+		);
+		
+		add_settings_section(
+			'ai_chat_bedrock_voice_settings',
+			__( '语音交互设置', 'ai-chat-bedrock' ),
+			array( $this, 'voice_settings_section_callback' ),
+			'ai_chat_bedrock_settings'
+		);
+		
+		add_settings_field(
+			'enable_voice',
+			__( '启用语音功能', 'ai-chat-bedrock' ),
+			array( $this, 'enable_voice_render' ),
+			'ai_chat_bedrock_settings',
+			'ai_chat_bedrock_voice_settings'
+		);
+		
+		add_settings_field(
+			'voice_id',
+			__( 'AI语音', 'ai-chat-bedrock' ),
+			array( $this, 'voice_id_render' ),
+			'ai_chat_bedrock_settings',
+			'ai_chat_bedrock_voice_settings'
+		);
+		
+		add_settings_field(
+			'speech_sample_rate',
+			__( '语音采样率', 'ai-chat-bedrock' ),
+			array( $this, 'speech_sample_rate_render' ),
+			'ai_chat_bedrock_settings',
+			'ai_chat_bedrock_voice_settings'
 		);
 		
 		add_settings_section(
@@ -925,6 +984,64 @@ class AI_Chat_Bedrock_Admin {
 		<p class="description"><?php esc_html_e( 'Enable debug mode to log API requests and responses.', 'ai-chat-for-amazon-bedrock' ); ?></p>
 		<?php
 	}
+	
+	/**
+	 * Voice settings section callback.
+	 *
+	 * @since    1.0.0
+	 */
+	public function voice_settings_section_callback() {
+		echo '<p>' . esc_html__( '配置语音交互功能的设置。', 'ai-chat-for-amazon-bedrock' ) . '</p>';
+	}
+	
+	/**
+	 * Enable voice field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function enable_voice_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$checked = isset( $options['enable_voice'] ) && $options['enable_voice'] === 'on';
+		?>
+		<input type="checkbox" name="ai_chat_bedrock_settings[enable_voice]" <?php checked( $checked ); ?>>
+		<p class="description"><?php esc_html_e( '启用语音交互功能，允许用户通过语音与AI交互。', 'ai-chat-for-amazon-bedrock' ); ?></p>
+		<?php
+	}
+	
+	/**
+	 * Voice ID field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function voice_id_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$value = isset( $options['voice_id'] ) ? $options['voice_id'] : 'tiffany';
+		?>
+		<select name="ai_chat_bedrock_settings[voice_id]">
+			<option value="tiffany" <?php selected( $value, 'tiffany' ); ?>>Tiffany (女声)</option>
+			<option value="matthew" <?php selected( $value, 'matthew' ); ?>>Matthew (男声)</option>
+		</select>
+		<p class="description"><?php esc_html_e( '选择AI回应使用的语音。Nova Sonic目前仅支持Tiffany和Matthew两种语音。', 'ai-chat-for-amazon-bedrock' ); ?></p>
+		<?php
+	}
+	
+	/**
+	 * Speech sample rate field render.
+	 *
+	 * @since    1.0.0
+	 */
+	public function speech_sample_rate_render() {
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$value = isset( $options['speech_sample_rate'] ) ? $options['speech_sample_rate'] : '24000';
+		?>
+		<select name="ai_chat_bedrock_settings[speech_sample_rate]">
+			<option value="8000" <?php selected( $value, '8000' ); ?>>8 kHz</option>
+			<option value="16000" <?php selected( $value, '16000' ); ?>>16 kHz</option>
+			<option value="24000" <?php selected( $value, '24000' ); ?>>24 kHz</option>
+		</select>
+		<p class="description"><?php esc_html_e( '语音输出的采样率。', 'ai-chat-for-amazon-bedrock' ); ?></p>
+		<?php
+	}
 
 	/**
 	 * Validate settings.
@@ -953,6 +1070,11 @@ class AI_Chat_Bedrock_Admin {
 		$output['max_tokens'] = absint( $input['max_tokens'] );
 		$output['temperature'] = min( 1, max( 0, floatval( $input['temperature'] ) ) );
 		$output['enable_streaming'] = isset( $input['enable_streaming'] ) ? 'on' : 'off';
+		
+		// Voice Settings
+		$output['enable_voice'] = isset( $input['enable_voice'] ) ? 'on' : 'off';
+		$output['voice_id'] = sanitize_text_field( $input['voice_id'] );
+		$output['speech_sample_rate'] = sanitize_text_field( $input['speech_sample_rate'] );
 		
 		// Chat Settings
 		$output['system_prompt'] = sanitize_textarea_field( $input['system_prompt'] );

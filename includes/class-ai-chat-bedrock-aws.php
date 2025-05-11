@@ -114,6 +114,7 @@ class AI_Chat_Bedrock_AWS {
 			return $this->invoke_model( $payload, $model_id, $endpoint );
 		}
 	}
+
 	
 	/**
 	 * Get the Bedrock endpoint URL.
