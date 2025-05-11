@@ -3,7 +3,7 @@
  * Plugin Name: AI Chat for Amazon Bedrock
  * Plugin URI: https://github.com/noteflow-ai/ai-chat-for-amazon-bedrock
  * Description: Integrate Amazon Bedrock AI models into your WordPress site for AI-powered chat functionality.
- * Version: 1.0.6
+ * Version: 1.0.7
  * Author: Glay
  * Author URI: https://github.com/noteflow-ai
  * License: GPL-2.0+
