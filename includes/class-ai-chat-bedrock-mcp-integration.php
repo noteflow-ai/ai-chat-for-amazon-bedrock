@@ -301,7 +301,7 @@ class AI_Chat_Bedrock_MCP_Integration {
             }
 
             // Parse tool name to get server name and tool name
-            $parsed_tool = $this->mcp_client->parse_tool_name($tool_call['name']);
+            $parsed_tool = $this->parse_tool_name($tool_call['name']);
             $server_name = $parsed_tool['server_name'];
             $tool_name = $parsed_tool['tool_name'];
 
@@ -335,6 +335,22 @@ class AI_Chat_Bedrock_MCP_Integration {
         }
 
         return $response;
+    }
+    
+    /**
+     * Parse tool name to get server name and tool name.
+     *
+     * @since    1.0.7
+     * @param    string    $tool_name    The tool name with server prefix.
+     * @return   array                   Array with server_name and tool_name.
+     */
+    private function parse_tool_name($tool_name) {
+        $parts = explode('___', $tool_name, 2);
+        
+        return array(
+            'server_name' => isset($parts[0]) ? $parts[0] : '',
+            'tool_name' => isset($parts[1]) ? $parts[1] : '',
+        );
     }
 
     /**

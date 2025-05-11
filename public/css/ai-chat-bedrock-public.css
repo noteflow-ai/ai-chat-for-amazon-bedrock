@@ -235,7 +235,7 @@
     margin-top: 10px;
     padding: 8px;
     background-color: #f5f5f5;
-    border-radius: 5px;
+    border-radius: 4px;
     font-size: 0.9em;
 }
 
@@ -245,12 +245,13 @@
 }
 
 .ai-chat-bedrock-tool-loading {
-    display: inline-block;
-    margin-left: 10px;
+    margin-top: 5px;
+    display: flex;
+    justify-content: center;
 }
 
 .ai-chat-bedrock-tool-result {
-    font-size: 0.9em;
+    margin-top: 5px;
 }
 
 .ai-chat-bedrock-tool-success {

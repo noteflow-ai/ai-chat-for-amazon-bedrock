@@ -544,8 +544,27 @@ class AI_Chat_Bedrock_Admin {
 		$enable_streaming = isset($options['enable_streaming']) && $options['enable_streaming'] === 'on';
 		$streaming_requested = $is_eventsource || $is_streaming_post;
 		
+		// For POST requests with streaming flag, check for tool calls first
+		if ($is_streaming_post) {
+			// Send message to AWS Bedrock without streaming to check for tool calls
+			$response = $this->aws->handle_chat_message($payload);
+			
+			// Process MCP tool calls if any
+			$response = apply_filters('ai_chat_bedrock_process_response', $response, $message);
+			
+			// Check if response contains tool calls
+			if (isset($response['tool_calls']) && !empty($response['tool_calls'])) {
+				// Return the tool calls in the response
+				wp_send_json($response);
+				wp_die();
+			}
+			
+			// No tool calls, just acknowledge receipt for streaming
+			wp_send_json_success(array('message' => 'Streaming request received'));
+			wp_die();
+		}
 		// For EventSource requests, we always need to stream
-		if ($is_eventsource) {
+		else if ($is_eventsource) {
 			// Set headers for streaming response
 			header('Content-Type: text/event-stream');
 			header('Cache-Control: no-cache');
@@ -573,6 +592,18 @@ class AI_Chat_Bedrock_Admin {
 			// Send message to AWS Bedrock with streaming
 			$response = $this->aws->handle_chat_message($payload);
 			
+			// Process MCP tool calls if any
+			$response = apply_filters('ai_chat_bedrock_process_response', $response, $message);
+			
+			// Check if response contains tool calls
+			if (isset($response['tool_calls']) && !empty($response['tool_calls'])) {
+				// Send tool calls in the response
+				echo "data: " . wp_json_encode($response) . "\n\n";
+				echo "data: " . wp_json_encode(array('end' => true)) . "\n\n";
+				flush();
+				exit;
+			}
+			
 			// Save the complete response to session for history
 			if (isset($response['content'])) {
 				$this->save_message_to_history($message, $response['content']);
@@ -584,13 +615,6 @@ class AI_Chat_Bedrock_Admin {
 			echo "data: " . wp_json_encode(array('end' => true)) . "\n\n";
 			flush();
 			exit;
-		} 
-		// For POST requests with streaming flag, just acknowledge receipt
-		else if ($is_streaming_post) {
-			// This is the initial POST request before EventSource connection
-			// Just acknowledge receipt and let the EventSource handle the actual streaming
-			wp_send_json_success(array('message' => 'Streaming request received'));
-			wp_die();
 		}
 		// Regular AJAX request without streaming
 		else {

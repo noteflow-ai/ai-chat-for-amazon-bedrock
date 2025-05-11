@@ -207,269 +207,310 @@
 			}
 		}
 		
-		// Function to handle streaming response
-		function handleStreamingResponse(options, $typing) {
-			// Create URL with parameters for POST request
-			const formData = new FormData();
-			for (const key in options.data) {
-				formData.append(key, options.data[key]);
-			}
-			
-			// Add streaming flag
-			formData.append('streaming', '1');
-			
-			// First make a POST request to initiate the streaming
-			$.ajax({
-				url: options.url,
-				method: 'POST',
-				data: formData,
-				processData: false,
-				contentType: false,
-				success: function(response) {
-					if (!response.success) {
-						// Remove typing indicator
-						removeTypingIndicator($typing);
-						
-						// Show error message
-						showError(response.data?.message || 'Error initiating streaming connection');
-						
-						// Re-enable form
-						$textarea.prop('disabled', false);
-						$submitButton.prop('disabled', false);
-						return;
-					}
-					
-					// Now create EventSource for streaming
-					const params = new URLSearchParams();
-					for (const key in options.data) {
-						params.append(key, options.data[key]);
-					}
-					params.append('streaming', '1');
-					
-					// Create EventSource
-					const eventSourceUrl = `${options.url}?${params.toString()}`;
-					console.log('Creating EventSource with URL:', eventSourceUrl);
-					const eventSource = new EventSource(eventSourceUrl);
-					
-					let responseContent = '';
-					let hasStarted = false;
-					
-					// 直接显示流式内容
-					function appendStreamContent(text) {
-						console.log('Appending stream content:', text);
-						
-						// 获取当前正在流式显示的消息元素
-						const $lastMessage = $messagesContainer.find('.ai-chat-bedrock-message.streaming-message .ai-chat-bedrock-message-content');
-						if ($lastMessage.length) {
-							// 添加内容到消息
-							responseContent += text;
-							
-							// 更新消息内容
-							$lastMessage.html(formatMessage(responseContent));
-							scrollToBottom();
-							
-							// 更新聊天历史
-							if (chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'assistant') {
-								chatHistory[chatHistory.length - 1].content = responseContent;
-							}
-						} else {
-							console.error('No streaming message element found');
-						}
-					}
-					
-					// Handle incoming messages
-					eventSource.onmessage = function(event) {
-						try {
-							console.log('Received event data:', event.data);
-							const data = JSON.parse(event.data);
-							console.log('Parsed event data:', data);
-							
-							// Check if this is the end marker
-							if (data.end) {
-								console.log('Received end marker, closing connection');
-								eventSource.close();
-								
-								// Remove typing indicator if still present
-								removeTypingIndicator($typing);
-						
-								// Add complete message if we haven't started yet
-								if (!hasStarted && responseContent) {
-									console.log('Adding complete message at end:', responseContent);
-									// 创建一个新的AI消息，而不是使用addMessage函数
-									// 这样可以避免将欢迎消息转换为普通消息
-									const $message = $(`
-										<div class="ai-chat-bedrock-message ai-message">
-											<div class="ai-chat-bedrock-avatar">
-												<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="none" d="M0 0h24v24H0z"/><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 3a3 3 0 0 1 3 3v1h1a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h1v-1a3 3 0 0 1 3-3zm0 2a1 1 0 0 0-1 1v1h2v-1a1 1 0 0 0-1-1z" fill="currentColor"/></svg>
-											</div>
-											<div class="ai-chat-bedrock-message-content">
-												${formatMessage(responseContent)}
-											</div>
-										</div>
-									`);
-									$messagesContainer.append($message);
-									scrollToBottom();
-									
-									// 添加到聊天历史
-									chatHistory.push({ role: 'assistant', content: responseContent });
-								} else {
-									// 完成流式消息，移除streaming-message类
-									$messagesContainer.find('.ai-chat-bedrock-message.streaming-message').removeClass('streaming-message');
-								}
-								
-								// Re-enable form
-								$textarea.prop('disabled', false);
-								$submitButton.prop('disabled', false);
-								$textarea.focus();
-								return;
-							}
-							
-							// Check for error
-							if (data.error) {
-								console.error('Error from server:', data.error);
-								eventSource.close();
-								
-								// Remove typing indicator
-								removeTypingIndicator($typing);
-								
-								// Show error message
-								showError(data.error);
-								
-								// Re-enable form
-								$textarea.prop('disabled', false);
-								$submitButton.prop('disabled', false);
-								$textarea.focus();
-								return;
-							}
-							
-							// 处理不同模型的流式响应
-							let contentToAdd = '';
-							
-							// 参考TypeScript代码中的processMessage函数
-							// 处理Nova模型的文本内容
-							if (data.output?.message?.content?.[0]?.text) {
-								contentToAdd = data.output.message.content[0].text;
-							}
-							// 处理Nova模型的文本增量
-							else if (data.contentBlockDelta?.delta?.text) {
-								contentToAdd = data.contentBlockDelta.delta.text;
-							}
-							// 处理Claude流式格式
-							else if (data.chunk?.bytes) {
-								try {
-									const decodedData = atob(data.chunk.bytes);
-									const innerData = JSON.parse(decodedData);
-									if (innerData.type === 'content_block_delta' && innerData.delta?.text) {
-										contentToAdd = innerData.delta.text;
-									}
-								} catch (e) {
-									console.error('Error parsing chunk bytes:', e);
-								}
-							}
-							// 处理content_block_delta事件
-							else if (data.type === 'content_block_delta' && data.delta?.type === 'text_delta') {
-								contentToAdd = data.delta.text || '';
-							}
-							// 处理其他响应格式
-							else if (data.delta?.text) {
-								contentToAdd = data.delta.text;
-							}
-							else if (data.choices?.[0]?.message?.content) {
-								contentToAdd = data.choices[0].message.content;
-							}
-							else if (data.content?.[0]?.text) {
-								contentToAdd = data.content[0].text;
-							}
-							else if (data.generation) {
-								contentToAdd = data.generation;
-							}
-							else if (data.outputText) {
-								contentToAdd = data.outputText;
-							}
-							else if (data.response) {
-								contentToAdd = data.response;
-							}
-							else if (data.output && typeof data.output === 'string') {
-								contentToAdd = data.output;
-							}
-							// 直接使用content字段
-							else if (data.content && typeof data.content === 'string') {
-								contentToAdd = data.content;
-							}
-							// 使用data.message字段（我们自定义的格式）
-							else if (data.data?.message) {
-								contentToAdd = data.data.message;
-							}
-							
-							// 如果提取到了内容，添加到响应中
-							if (contentToAdd) {
-								console.log('Extracted content chunk:', contentToAdd);
-								
-								// 如果是第一个内容块，移除打字指示器并创建一个新的消息元素
-								if (!hasStarted) {
-									console.log('First chunk received, creating new message');
-									removeTypingIndicator($typing);
-									
-									// 创建一个新的AI消息，而不是使用addMessage函数
-									// 这样可以避免将欢迎消息转换为普通消息
-									const $message = $(`
-										<div class="ai-chat-bedrock-message ai-message streaming-message">
-											<div class="ai-chat-bedrock-avatar">
-												<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="none" d="M0 0h24v24H0z"/><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 3a3 3 0 0 1 3 3v1h1a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h1v-1a3 3 0 0 1 3-3zm0 2a1 1 0 0 0-1 1v1h2v-1a1 1 0 0 0-1-1z" fill="currentColor"/></svg>
-											</div>
-											<div class="ai-chat-bedrock-message-content"></div>
-										</div>
-									`);
-									$messagesContainer.append($message);
-									
-									hasStarted = true;
-									responseContent = '';
-									
-									// 添加新的助手消息到聊天历史
-									chatHistory.push({ role: 'assistant', content: '' });
-								}
-								
-								// 直接添加内容到流式消息
-								appendStreamContent(contentToAdd);
-							}
-						} catch (error) {
-							console.error('Error parsing streaming response:', error, event.data);
-						}
-					};
-					
-					// Handle errors
-					eventSource.onerror = function(error) {
-						console.error('EventSource error:', error);
-						eventSource.close();
-						
-						// Remove typing indicator
-						removeTypingIndicator($typing);
-						
-						// Show error message
-						showError('Error connecting to the server. Falling back to regular request.');
-						
-						// Fall back to regular AJAX
-						handleRegularResponse(options, null);
-						
-						// Re-enable form
-						$textarea.prop('disabled', false);
-						$submitButton.prop('disabled', false);
-					};
-				},
-				error: function(xhr, status, error) {
-					console.error('AJAX error:', status, error);
-					// Remove typing indicator
-					removeTypingIndicator($typing);
-					
-					// Show error message
-					showError('Error: ' + (error || 'Could not connect to the server.'));
-					
-					// Re-enable form
-					$textarea.prop('disabled', false);
-					$submitButton.prop('disabled', false);
-				}
-			});
-		}
+// Function to handle streaming response
+function handleStreamingResponse(options, $typing) {
+    // Create URL with parameters for POST request
+    const formData = new FormData();
+    for (const key in options.data) {
+        formData.append(key, options.data[key]);
+    }
+    
+    // Add streaming flag
+    formData.append('streaming', '1');
+    
+    // First make a POST request to initiate the streaming
+    $.ajax({
+        url: options.url,
+        method: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(response) {
+            console.log('Initial streaming response:', response);
+            
+            if (!response.success) {
+                // Remove typing indicator
+                removeTypingIndicator($typing);
+                
+                // Show error message
+                showError(response.data?.message || 'Error initiating streaming connection');
+                
+                // Re-enable form
+                $textarea.prop('disabled', false);
+                $submitButton.prop('disabled', false);
+                return;
+            }
+            
+            // Check if response contains tool calls
+            if (response.tool_calls && response.tool_calls.length > 0) {
+                console.log('Tool calls detected in initial response:', response.tool_calls);
+                
+                // Remove typing indicator
+                removeTypingIndicator($typing);
+                
+                // Handle tool calls
+                handleToolCalls(response, options.data.message);
+                return;
+            }
+            
+            // Now create EventSource for streaming
+            const params = new URLSearchParams();
+            for (const key in options.data) {
+                params.append(key, options.data[key]);
+            }
+            params.append('streaming', '1');
+            
+            // Create EventSource
+            const eventSourceUrl = `${options.url}?${params.toString()}`;
+            console.log('Creating EventSource with URL:', eventSourceUrl);
+            const eventSource = new EventSource(eventSourceUrl);
+            
+            let responseContent = '';
+            let hasStarted = false;
+            
+            // 直接显示流式内容
+            function appendStreamContent(text) {
+                console.log('Appending stream content:', text);
+                
+                // 获取当前正在流式显示的消息元素
+                const $lastMessage = $messagesContainer.find('.ai-chat-bedrock-message.streaming-message .ai-chat-bedrock-message-content');
+                if ($lastMessage.length) {
+                    // 添加内容到消息
+                    responseContent += text;
+                    
+                    // 更新消息内容
+                    $lastMessage.html(formatMessage(responseContent));
+                    scrollToBottom();
+                    
+                    // 更新聊天历史
+                    if (chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'assistant') {
+                        chatHistory[chatHistory.length - 1].content = responseContent;
+                    }
+                } else {
+                    console.error('No streaming message element found');
+                }
+            }
+            
+            // Handle incoming messages
+            eventSource.onmessage = function(event) {
+                try {
+                    console.log('Received event data:', event.data);
+                    const data = JSON.parse(event.data);
+                    console.log('Parsed event data:', data);
+                    
+                    // Check if response contains tool calls
+                    if (data.tool_calls && data.tool_calls.length > 0) {
+                        console.log('Tool calls detected in streaming response:', data.tool_calls);
+                        eventSource.close();
+                        
+                        // Remove typing indicator
+                        removeTypingIndicator($typing);
+                        
+                        // Handle tool calls
+                        handleToolCalls(data, options.data.message);
+                        return;
+                    }
+                    
+                    // Check for Claude format tool calls
+                    if (data.content && Array.isArray(data.content) && 
+                        data.content.some(item => item && item.type === 'tool_use')) {
+                        console.log('Claude tool_use detected in streaming response:', data.content);
+                        eventSource.close();
+                        
+                        // Remove typing indicator
+                        removeTypingIndicator($typing);
+                        
+                        // Handle tool calls
+                        handleToolCalls(data, options.data.message);
+                        return;
+                    }
+                    
+                    // Check if this is the end marker
+                    if (data.end) {
+                        console.log('Received end marker, closing connection');
+                        eventSource.close();
+                        
+                        // Remove typing indicator if still present
+                        removeTypingIndicator($typing);
+                
+                        // Add complete message if we haven't started yet
+                        if (!hasStarted && responseContent) {
+                            console.log('Adding complete message at end:', responseContent);
+                            // 创建一个新的AI消息，而不是使用addMessage函数
+                            // 这样可以避免将欢迎消息转换为普通消息
+                            const $message = $(`
+                                <div class="ai-chat-bedrock-message ai-message">
+                                    <div class="ai-chat-bedrock-avatar">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="none" d="M0 0h24v24H0z"/><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 3a3 3 0 0 1 3 3v1h1a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h1v-1a3 3 0 0 1 3-3zm0 2a1 1 0 0 0-1 1v1h2v-1a1 1 0 0 0-1-1z" fill="currentColor"/></svg>
+                                    </div>
+                                    <div class="ai-chat-bedrock-message-content">
+                                        ${formatMessage(responseContent)}
+                                    </div>
+                                </div>
+                            `);
+                            $messagesContainer.append($message);
+                            scrollToBottom();
+                            
+                            // 添加到聊天历史
+                            chatHistory.push({ role: 'assistant', content: responseContent });
+                        } else {
+                            // 完成流式消息，移除streaming-message类
+                            $messagesContainer.find('.ai-chat-bedrock-message.streaming-message').removeClass('streaming-message');
+                        }
+                        
+                        // Re-enable form
+                        $textarea.prop('disabled', false);
+                        $submitButton.prop('disabled', false);
+                        $textarea.focus();
+                        return;
+                    }
+                    
+                    // Check for error
+                    if (data.error) {
+                        console.error('Error from server:', data.error);
+                        eventSource.close();
+                        
+                        // Remove typing indicator
+                        removeTypingIndicator($typing);
+                        
+                        // Show error message
+                        showError(data.error);
+                        
+                        // Re-enable form
+                        $textarea.prop('disabled', false);
+                        $submitButton.prop('disabled', false);
+                        $textarea.focus();
+                        return;
+                    }
+                    
+                    // 处理不同模型的流式响应
+                    let contentToAdd = '';
+                    
+                    // 参考TypeScript代码中的processMessage函数
+                    // 处理Nova模型的文本内容
+                    if (data.output?.message?.content?.[0]?.text) {
+                        contentToAdd = data.output.message.content[0].text;
+                    }
+                    // 处理Nova模型的文本增量
+                    else if (data.contentBlockDelta?.delta?.text) {
+                        contentToAdd = data.contentBlockDelta.delta.text;
+                    }
+                    // 处理Claude流式格式
+                    else if (data.chunk?.bytes) {
+                        try {
+                            const decodedData = atob(data.chunk.bytes);
+                            const innerData = JSON.parse(decodedData);
+                            if (innerData.type === 'content_block_delta' && innerData.delta?.text) {
+                                contentToAdd = innerData.delta.text;
+                            }
+                        } catch (e) {
+                            console.error('Error parsing chunk bytes:', e);
+                        }
+                    }
+                    // 处理content_block_delta事件
+                    else if (data.type === 'content_block_delta' && data.delta?.type === 'text_delta') {
+                        contentToAdd = data.delta.text || '';
+                    }
+                    // 处理其他响应格式
+                    else if (data.delta?.text) {
+                        contentToAdd = data.delta.text;
+                    }
+                    else if (data.choices?.[0]?.message?.content) {
+                        contentToAdd = data.choices[0].message.content;
+                    }
+                    else if (data.content?.[0]?.text) {
+                        contentToAdd = data.content[0].text;
+                    }
+                    else if (data.generation) {
+                        contentToAdd = data.generation;
+                    }
+                    else if (data.outputText) {
+                        contentToAdd = data.outputText;
+                    }
+                    else if (data.response) {
+                        contentToAdd = data.response;
+                    }
+                    else if (data.output && typeof data.output === 'string') {
+                        contentToAdd = data.output;
+                    }
+                    // 直接使用content字段
+                    else if (data.content && typeof data.content === 'string') {
+                        contentToAdd = data.content;
+                    }
+                    // 使用data.message字段（我们自定义的格式）
+                    else if (data.data?.message) {
+                        contentToAdd = data.data.message;
+                    }
+                    
+                    // 如果提取到了内容，添加到响应中
+                    if (contentToAdd) {
+                        console.log('Extracted content chunk:', contentToAdd);
+                        
+                        // 如果是第一个内容块，移除打字指示器并创建一个新的消息元素
+                        if (!hasStarted) {
+                            console.log('First chunk received, creating new message');
+                            removeTypingIndicator($typing);
+                            
+                            // 创建一个新的AI消息，而不是使用addMessage函数
+                            // 这样可以避免将欢迎消息转换为普通消息
+                            const $message = $(`
+                                <div class="ai-chat-bedrock-message ai-message streaming-message">
+                                    <div class="ai-chat-bedrock-avatar">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="none" d="M0 0h24v24H0z"/><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 3a3 3 0 0 1 3 3v1h1a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h1v-1a3 3 0 0 1 3-3zm0 2a1 1 0 0 0-1 1v1h2v-1a1 1 0 0 0-1-1z" fill="currentColor"/></svg>
+                                    </div>
+                                    <div class="ai-chat-bedrock-message-content"></div>
+                                </div>
+                            `);
+                            $messagesContainer.append($message);
+                            
+                            hasStarted = true;
+                            responseContent = '';
+                            
+                            // 添加新的助手消息到聊天历史
+                            chatHistory.push({ role: 'assistant', content: '' });
+                        }
+                        
+                        // 直接添加内容到流式消息
+                        appendStreamContent(contentToAdd);
+                    }
+                } catch (error) {
+                    console.error('Error parsing streaming response:', error, event.data);
+                }
+            };
+            
+            // Handle errors
+            eventSource.onerror = function(error) {
+                console.error('EventSource error:', error);
+                eventSource.close();
+                
+                // Remove typing indicator
+                removeTypingIndicator($typing);
+                
+                // Show error message
+                showError('Error connecting to the server. Falling back to regular request.');
+                
+                // Fall back to regular AJAX
+                handleRegularResponse(options, null);
+                
+                // Re-enable form
+                $textarea.prop('disabled', false);
+                $submitButton.prop('disabled', false);
+            };
+        },
+        error: function(xhr, status, error) {
+            console.error('AJAX error:', status, error);
+            // Remove typing indicator
+            removeTypingIndicator($typing);
+            
+            // Show error message
+            showError('Error: ' + (error || 'Could not connect to the server.'));
+            
+            // Re-enable form
+            $textarea.prop('disabled', false);
+            $submitButton.prop('disabled', false);
+        }
+    });
+}
 		
 		// Function to handle regular AJAX response
 		function handleRegularResponse(options, $typing) {
@@ -684,5 +725,222 @@
 		// Handle clear button click
 		$clearButton.on('click', clearChat);
 	});
+
+// Helper function to format message with markdown-like syntax (global scope)
+function formatMessageGlobal(message) {
+    // Handle code blocks
+    message = message.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+    
+    // Handle inline code
+    message = message.replace(/`([^`]+)`/g, '<code>$1</code>');
+    
+    // Handle bold text
+    message = message.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    
+    // Handle italic text
+    message = message.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    
+    // Handle line breaks
+    message = message.replace(/\n/g, '<br>');
+    
+    return message;
+}
+
+// Function to handle tool calls from AI responses
+function handleToolCalls(response, originalMessage) {
+    console.log('Handling tool calls:', response);
+    
+    // Extract tool calls from different response formats
+    let toolCalls = [];
+    
+    // Standard format
+    if (response.tool_calls && Array.isArray(response.tool_calls)) {
+        toolCalls = response.tool_calls;
+    }
+    
+    // Claude format (tool_use in content array)
+    if (response.content && Array.isArray(response.content)) {
+        response.content.forEach(item => {
+            if (item && item.type === 'tool_use') {
+                toolCalls.push({
+                    id: item.id || 'tool_call_' + Date.now(),
+                    name: item.name,
+                    parameters: item.input || {}
+                });
+            }
+        });
+    }
+    
+    if (toolCalls.length === 0) {
+        console.log('No valid tool calls found');
+        return;
+    }
+    
+    // Show a message that tools are being used
+    const toolName = toolCalls[0].name.split('___')[1] || toolCalls[0].name;
+    const toolMessage = response.data?.message || 'Using tools to find information...';
+    
+    const $toolMessage = $(`
+        <div class="ai-chat-bedrock-message ai-message ai-chat-bedrock-tool-message">
+            <div class="ai-chat-bedrock-avatar">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="none" d="M0 0h24v24H0z"/><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 3a3 3 0 0 1 3 3v1h1a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h1v-1a3 3 0 0 1 3-3zm0 2a1 1 0 0 0-1 1v1h2v-1a1 1 0 0 0-1-1z" fill="currentColor"/></svg>
+            </div>
+            <div class="ai-chat-bedrock-message-content">
+                ${formatMessageGlobal(toolMessage)}
+                <div class="ai-chat-bedrock-tool-indicator">
+                    <span class="ai-chat-bedrock-tool-name">Using tool: ${escapeHtml(toolName)}</span>
+                    <div class="ai-chat-bedrock-tool-loading">
+                        <div class="ai-chat-bedrock-typing-dot"></div>
+                        <div class="ai-chat-bedrock-typing-dot"></div>
+                        <div class="ai-chat-bedrock-typing-dot"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `);
+    
+    // Access jQuery elements from the global scope
+    $('.ai-chat-bedrock-messages').append($toolMessage);
+    
+    // Scroll to bottom (defined in document ready)
+    if (typeof scrollToBottom === 'function') {
+        scrollToBottom();
+    } else {
+        // Fallback scrolling if function not available
+        $('.ai-chat-bedrock-messages').scrollTop($('.ai-chat-bedrock-messages')[0].scrollHeight);
+    }
+    
+    // Add initial message to chat history (access from global scope)
+    if (typeof chatHistory !== 'undefined') {
+        chatHistory.push({ role: 'assistant', content: toolMessage });
+    }
+    
+    // Send tool results back to get final answer
+    const toolResultsOptions = {
+        url: ai_chat_bedrock_params.ajax_url,
+        method: 'POST',
+        data: {
+            action: 'ai_chat_bedrock_tool_results',
+            nonce: ai_chat_bedrock_params.nonce,
+            tool_calls: JSON.stringify(toolCalls),
+            original_message: originalMessage,
+            history: typeof chatHistory !== 'undefined' ? JSON.stringify(chatHistory) : '[]'
+        }
+    };
+    
+    console.log('Sending tool results request:', toolResultsOptions);
+    
+    // Make request to get final answer
+    $.ajax(toolResultsOptions)
+        .done(function(finalResponse) {
+            console.log('Received final response:', finalResponse);
+            
+            if (finalResponse.success) {
+                // Update the tool message with results
+                $toolMessage.find('.ai-chat-bedrock-tool-indicator').html(`
+                    <div class="ai-chat-bedrock-tool-result">
+                        <span class="ai-chat-bedrock-tool-success">✓ Tool used successfully</span>
+                    </div>
+                `);
+                
+                // Add final AI response to chat
+                if (typeof addMessage === 'function') {
+                    addMessage(finalResponse.data.message);
+                } else {
+                    // Fallback if addMessage is not available
+                    const $message = $(`
+                        <div class="ai-chat-bedrock-message ai-message">
+                            <div class="ai-chat-bedrock-avatar">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="none" d="M0 0h24v24H0z"/><path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm0 3a3 3 0 0 1 3 3v1h1a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h1v-1a3 3 0 0 1 3-3zm0 2a1 1 0 0 0-1 1v1h2v-1a1 1 0 0 0-1-1z" fill="currentColor"/></svg>
+                            </div>
+                            <div class="ai-chat-bedrock-message-content">
+                                ${formatMessageGlobal(finalResponse.data.message)}
+                            </div>
+                        </div>
+                    `);
+                    $('.ai-chat-bedrock-messages').append($message);
+                    $('.ai-chat-bedrock-messages').scrollTop($('.ai-chat-bedrock-messages')[0].scrollHeight);
+                    
+                    // Add to chat history if available
+                    if (typeof chatHistory !== 'undefined') {
+                        chatHistory.push({ role: 'assistant', content: finalResponse.data.message });
+                    }
+                }
+            } else {
+                // Show error in tool message
+                $toolMessage.find('.ai-chat-bedrock-tool-indicator').html(`
+                    <div class="ai-chat-bedrock-tool-result">
+                        <span class="ai-chat-bedrock-tool-error">✗ Tool error</span>
+                    </div>
+                `);
+                
+                // Show error message
+                if (typeof showError === 'function') {
+                    showError(finalResponse.data?.message || 'An error occurred while processing tool results.');
+                } else {
+                    // Fallback error display
+                    const $error = $(`
+                        <div class="ai-chat-bedrock-error">
+                            ${finalResponse.data?.message || 'An error occurred while processing tool results.'}
+                        </div>
+                    `);
+                    $('.ai-chat-bedrock-messages').append($error);
+                    $('.ai-chat-bedrock-messages').scrollTop($('.ai-chat-bedrock-messages')[0].scrollHeight);
+                    
+                    // Remove error after 5 seconds
+                    setTimeout(() => {
+                        $error.fadeOut(300, function() {
+                            $(this).remove();
+                        });
+                    }, 5000);
+                }
+            }
+        })
+        .fail(function(xhr, status, error) {
+            // Show error in tool message
+            $toolMessage.find('.ai-chat-bedrock-tool-indicator').html(`
+                <div class="ai-chat-bedrock-tool-result">
+                    <span class="ai-chat-bedrock-tool-error">✗ Tool error</span>
+                </div>
+            `);
+            
+            // Show error message
+            if (typeof showError === 'function') {
+                showError('Error: ' + (error || 'Could not process tool results.'));
+            } else {
+                // Fallback error display
+                const $error = $(`
+                    <div class="ai-chat-bedrock-error">
+                        Error: ${error || 'Could not process tool results.'}
+                    </div>
+                `);
+                $('.ai-chat-bedrock-messages').append($error);
+                $('.ai-chat-bedrock-messages').scrollTop($('.ai-chat-bedrock-messages')[0].scrollHeight);
+                
+                // Remove error after 5 seconds
+                setTimeout(() => {
+                    $error.fadeOut(300, function() {
+                        $(this).remove();
+                    });
+                }, 5000);
+            }
+        })
+        .always(function() {
+            // Re-enable form
+            $('.ai-chat-bedrock-textarea').prop('disabled', false);
+            $('.ai-chat-bedrock-submit').prop('disabled', false);
+            $('.ai-chat-bedrock-textarea').focus();
+        });
+}
+
+// Helper function to escape HTML
+function escapeHtml(unsafe) {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
 
 })( jQuery );

@@ -1,6 +1,6 @@
 === AI Chat for Amazon Bedrock ===
 Contributors: glay
-Tags: ai, chat, mcp, bedrock, claude
+Tags: ai, manus, mcp, bedrock, claude
 Requires at least: 5.0
 Tested up to: 6.8
 Stable tag: 1.0.6
@@ -12,19 +12,15 @@ Integrate Amazon Bedrock AI models into your WordPress site for AI-powered chat 
 
 == Description ==
 
-AI Chat for Amazon Bedrock allows you to easily integrate Amazon Bedrock's powerful AI models into your WordPress site. This plugin provides a customizable chat interface that your visitors can use to interact with various AI models available on Amazon Bedrock.
+This plugin provides a powerful way to integrate Amazon Bedrock's AI capabilities into WordPress sites, with extensive customization options and the ability to extend AI functionality through the Model Context Protocol.
 
 = Features =
 
-* Support for multiple Amazon Bedrock models:
-  * Claude 3 (Sonnet, Haiku, Opus)
-  * Claude 3.5 Sonnet
-  * Claude 3.7 Sonnet
-  * Amazon Titan
-  * Amazon Nova
-  * Meta Llama 2 & 3
-  * Mistral
-  * DeepSeek R1
+* Model Context Protocol (MCP) support
+* MCP client functionality
+* MCP server management interface
+* WordPress MCP server implementation
+* Support for newer models like Claude 3.5, Claude 3.7, and DeepSeek R1
 * Customizable chat interface
 * Streaming responses for a more interactive experience
 * System prompt customization
