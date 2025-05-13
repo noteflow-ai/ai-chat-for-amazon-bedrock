@@ -61,9 +61,6 @@ class AI_Chat_Bedrock_MCP_Integration {
         
         // Filter to handle MCP tool calls in AI responses
         $loader->add_filter('ai_chat_bedrock_process_response', $this, 'process_mcp_tool_calls', 10, 2);
-        
-        // Add debug log
-        error_log('AI Chat Bedrock Debug - MCP hooks registered');
     }
 
     /**
@@ -223,8 +220,6 @@ class AI_Chat_Bedrock_MCP_Integration {
         // Check if MCP tools are enabled in settings
         $enable_mcp = get_option('ai_chat_bedrock_enable_mcp', false);
         
-        error_log('AI Chat Bedrock Debug - MCP enabled: ' . ($enable_mcp ? 'true' : 'false'));
-        
         if (!$enable_mcp) {
             error_log('AI Chat Bedrock Debug - MCP is disabled, not adding tools to payload');
             return $payload;
@@ -232,7 +227,6 @@ class AI_Chat_Bedrock_MCP_Integration {
 
         // Get all available tools from MCP servers
         $mcp_tools = $this->mcp_client->get_all_tools();
-        error_log('AI Chat Bedrock Debug - MCP tools before formatting: ' . print_r($mcp_tools, true));
         
         if (empty($mcp_tools)) {
             error_log('AI Chat Bedrock Debug - No MCP tools found');
@@ -270,14 +264,10 @@ class AI_Chat_Bedrock_MCP_Integration {
             ];
             
             $claude_tools[] = $claude_tool;
-            error_log('AI Chat Bedrock Debug - Added tool to Claude format: ' . $tool['name']);
         }
 
         // Add tools to payload
         $payload['tools'] = $claude_tools;
-        
-        error_log('AI Chat Bedrock Debug - Number of tools added to payload: ' . count($claude_tools));
-        error_log('AI Chat Bedrock Debug - Tools added to payload: ' . print_r($claude_tools, true));
         
         // Add system message to instruct Claude to use tools
         if (!empty($claude_tools)) {
@@ -297,11 +287,7 @@ class AI_Chat_Bedrock_MCP_Integration {
             
             // Add the system message as a top-level parameter
             $payload['system'] = $system_message;
-            
-            error_log('AI Chat Bedrock Debug - Added top-level system parameter for Bedrock Claude');
         }
-        
-        error_log('AI Chat Bedrock Debug - Final payload with tools: ' . print_r($payload, true));
 
         return $payload;
     }
@@ -322,8 +308,6 @@ class AI_Chat_Bedrock_MCP_Integration {
         
         // Check for Claude 3.7 format tool calls in content array
         if (isset($response['content']) && is_array($response['content'])) {
-            error_log('AI Chat Bedrock Debug - Checking for tool calls in content array');
-            
             foreach ($response['content'] as $content_item) {
                 if (isset($content_item['type']) && $content_item['type'] === 'tool_use') {
                     error_log('AI Chat Bedrock Debug - Found tool_use in content: ' . print_r($content_item, true));

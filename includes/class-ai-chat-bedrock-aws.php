@@ -89,9 +89,7 @@ class AI_Chat_Bedrock_AWS {
 		$payload = $this->format_payload_for_model( $model_id, $message_data, $max_tokens, $temperature );
 		
 		// Apply filters to modify payload (this is where MCP tools should be added)
-		error_log('AI Chat Bedrock Debug - Before applying filters to payload');
 		$payload = apply_filters('ai_chat_bedrock_message_payload', $payload, $message_data);
-		error_log('AI Chat Bedrock Debug - After applying filters to payload');
 		
 		// Debug log the full payload
 		if ($this->debug) {

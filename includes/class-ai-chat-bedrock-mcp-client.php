@@ -62,8 +62,6 @@ class AI_Chat_Bedrock_MCP_Client {
         
         // Load registered servers from options
         $this->load_servers();
-        
-        error_log('AI Chat Bedrock Debug - MCP Client initialized with ' . count($this->servers) . ' servers');
     }
 
     /**
@@ -76,8 +74,8 @@ class AI_Chat_Bedrock_MCP_Client {
         $saved_servers = get_option('ai_chat_bedrock_mcp_servers', array());
         if (!empty($saved_servers) && is_array($saved_servers)) {
             $this->servers = $saved_servers;
-            error_log('AI Chat Bedrock Debug - Loaded ' . count($this->servers) . ' MCP servers from options');
         } else {
+            // Keep this as it could indicate a configuration issue
             error_log('AI Chat Bedrock Debug - No MCP servers found in options');
         }
     }
@@ -90,7 +88,6 @@ class AI_Chat_Bedrock_MCP_Client {
      */
     private function save_servers() {
         update_option('ai_chat_bedrock_mcp_servers', $this->servers);
-        error_log('AI Chat Bedrock Debug - Saved ' . count($this->servers) . ' MCP servers to options');
     }
 
     /**

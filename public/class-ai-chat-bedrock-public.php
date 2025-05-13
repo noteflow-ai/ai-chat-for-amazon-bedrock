@@ -175,19 +175,12 @@ class AI_Chat_Bedrock_Public {
 			wp_send_json_error( array( 'message' => 'Invalid security token.' ) );
 		}
 		
-		// Get message and history
-		$message = isset( $_REQUEST['message'] ) ? sanitize_text_field( $_REQUEST['message'] ) : '';
-		$history = isset( $_REQUEST['history'] ) ? json_decode( stripslashes( $_REQUEST['history'] ), true ) : array();
+		// 检查是否是流式处理的第二阶段（EventSource连接）
 		$streaming = isset( $_REQUEST['streaming'] ) && $_REQUEST['streaming'] === '1';
+		$stream_id = isset( $_REQUEST['stream_id'] ) ? sanitize_text_field( $_REQUEST['stream_id'] ) : '';
 		
-		if ( empty( $message ) ) {
-			wp_send_json_error( array( 'message' => 'Message is required.' ) );
-		}
-		
-		// Get AWS instance
-		$aws = new AI_Chat_Bedrock_AWS();
-		
-		if ( $streaming ) {
+		// 如果是流式处理的第二阶段，从会话中获取消息和历史
+		if ( $streaming && !empty( $stream_id ) && !isset( $_REQUEST['message'] ) ) {
 			// 设置流式响应头
 			header('Content-Type: text/event-stream');
 			header('Cache-Control: no-cache');
@@ -197,42 +190,222 @@ class AI_Chat_Bedrock_Public {
 			// 清除并关闭之前的输出缓冲
 			if (ob_get_level()) ob_end_clean();
 			
-			// 发送初始响应
-			echo "data: " . json_encode(array(
-				'success' => true,
-				'data' => array(
-					'message' => 'Streaming started'
-				)
-			)) . "\n\n";
-			flush();
 			
-			// 设置流式回调
-			$streaming_callback = function($data) {
-				echo "data: " . json_encode($data) . "\n\n";
+			// 从transients中获取消息和历史
+			$message = get_transient('ai_chat_bedrock_message_' . $stream_id);
+			$history = get_transient('ai_chat_bedrock_history_' . $stream_id);
+			
+			// 记录调试信息
+			error_log('从transient获取消息，流ID: ' . $stream_id . ', 消息: ' . ($message ? $message : '未找到'));
+			
+			if ( empty( $message ) ) {
+				echo "data: " . json_encode(array(
+					'error' => 'No message found in session'
+				)) . "\n\n";
 				flush();
-			};
+				echo "data: " . json_encode(array('end' => true)) . "\n\n";
+				flush();
+				exit;
+			}
 			
-			// 发送到 AWS Bedrock
-			$response = $aws->handle_chat_message(array(
+			// 检查是否有工具调用缓存
+			$tool_calls = get_transient('ai_chat_bedrock_tool_calls_' . $stream_id);
+			if (!empty($tool_calls)) {
+				error_log('从transient获取工具调用，流ID: ' . $stream_id . ', 工具调用: ' . print_r($tool_calls, true));
+				
+				// 发送工具调用给前端
+				echo "data: " . json_encode(array(
+					'tool_calls' => $tool_calls
+				)) . "\n\n";
+				flush();
+				
+				// 发送结束标记
+				echo "data: " . json_encode(array('end' => true)) . "\n\n";
+				flush();
+				exit;
+			}
+			
+			// 获取AWS实例
+			$aws = new AI_Chat_Bedrock_AWS();
+			
+			// 获取设置
+			$options = get_option( 'ai_chat_bedrock_settings' );
+			$enable_mcp = isset( $options['enable_mcp'] ) && $options['enable_mcp'] === 'on';
+			
+			// 准备发送到AWS Bedrock的数据
+			$aws_data = array(
 				'messages' => $history,
 				'message' => $message,
-				'streaming_callback' => $streaming_callback
-			));
+				'streaming_callback' => function($data) {
+					echo "data: " . json_encode($data) . "\n\n";
+					flush();
+				}
+			);
+			
+			// 如果启用了MCP，添加MCP工具到payload
+			if ($enable_mcp) {
+				require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-ai-chat-bedrock-mcp-integration.php';
+				$mcp_integration = new AI_Chat_Bedrock_MCP_Integration();
+				
+				// 使用MCP集成添加工具到payload
+				$aws_data = $mcp_integration->add_mcp_tools_to_payload($aws_data, array('message' => $message));
+				error_log('流式处理第二阶段：添加MCP工具到payload: ' . print_r($aws_data, true));
+			}
+			
+			// 发送到 AWS Bedrock
+			$response = $aws->handle_chat_message($aws_data);
 			
 			// 发送结束标记
 			echo "data: " . json_encode(array('end' => true)) . "\n\n";
 			flush();
 			exit;
-		} else {
-			// 发送到 AWS Bedrock
-			$response = $aws->handle_chat_message(array(
+		}
+		
+		// 常规处理或流式处理的第一阶段
+		$message = isset( $_REQUEST['message'] ) ? sanitize_text_field( $_REQUEST['message'] ) : '';
+		$history = isset( $_REQUEST['history'] ) ? json_decode( stripslashes( $_REQUEST['history'] ), true ) : array();
+		
+		if ( empty( $message ) ) {
+			wp_send_json_error( array( 'message' => 'Message is required.' ) );
+		}
+		
+		// 如果是流式处理的第一阶段，先检查是否有工具调用
+		if ( $streaming && !isset( $_REQUEST['stream_id'] ) ) {
+			// 获取AWS实例
+			$aws = new AI_Chat_Bedrock_AWS();
+			
+			// 获取设置
+			$options = get_option( 'ai_chat_bedrock_settings' );
+			$enable_mcp = isset( $options['enable_mcp'] ) && $options['enable_mcp'] === 'on';
+			
+			// 如果启用了MCP，获取MCP集成
+			$mcp_integration = null;
+			if ($enable_mcp) {
+				require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-ai-chat-bedrock-mcp-integration.php';
+				$mcp_integration = new AI_Chat_Bedrock_MCP_Integration();
+			}
+			
+			// 准备发送到AWS Bedrock的数据
+			$aws_data = array(
 				'messages' => $history,
 				'message' => $message
-			));
+			);
 			
-			// 返回响应
-			wp_send_json($response);
+			// 如果启用了MCP，添加MCP工具到payload
+			if ($enable_mcp && $mcp_integration) {
+				// 使用MCP集成添加工具到payload
+				$aws_data = $mcp_integration->add_mcp_tools_to_payload($aws_data, array('message' => $message));
+				error_log('添加MCP工具到payload: ' . print_r($aws_data, true));
+			}
+			
+			// 发送到 AWS Bedrock
+			$response = $aws->handle_chat_message($aws_data);
+			
+			// 检查是否有工具调用
+			if (isset($response['tool_calls']) && !empty($response['tool_calls'])) {
+				error_log('流式处理第一阶段检测到工具调用: ' . print_r($response['tool_calls'], true));
+				
+				// 直接返回工具调用，不进行流式处理
+				wp_send_json($response);
+				return;
+			}
+			
+			// 生成唯一的流ID
+			$stream_id = uniqid('stream_');
+			
+			// 保存消息和历史到transients中，使用流ID作为键
+			set_transient('ai_chat_bedrock_message_' . $stream_id, $message, 3600); // 1小时过期
+			set_transient('ai_chat_bedrock_history_' . $stream_id, $history, 3600); // 1小时过期
+			
+			// 记录调试信息
+			error_log('保存消息到transient，流ID: ' . $stream_id . ', 消息: ' . $message);
+			
+			// 返回成功响应，前端将使用这个响应创建EventSource
+			wp_send_json_success( array( 
+				'message' => 'Streaming initialized',
+				'stream_id' => $stream_id
+			) );
+			return;
 		}
+		
+		// 常规（非流式）处理或流式处理的第一阶段（检查工具调用）
+		$aws = new AI_Chat_Bedrock_AWS();
+		
+		// 获取设置
+		$options = get_option( 'ai_chat_bedrock_settings' );
+		$enable_mcp = isset( $options['enable_mcp'] ) && $options['enable_mcp'] === 'on';
+		
+		// 如果启用了MCP，获取MCP集成
+		$mcp_integration = null;
+		if ($enable_mcp) {
+			require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-ai-chat-bedrock-mcp-integration.php';
+			$mcp_integration = new AI_Chat_Bedrock_MCP_Integration();
+		}
+		
+		// 准备发送到AWS Bedrock的数据
+		$aws_data = array(
+			'messages' => $history,
+			'message' => $message
+		);
+		
+		// 如果启用了MCP，添加MCP工具到payload
+		if ($enable_mcp && $mcp_integration) {
+			// 使用MCP集成添加工具到payload
+			$aws_data = $mcp_integration->add_mcp_tools_to_payload($aws_data, array('message' => $message));
+			error_log('添加MCP工具到payload: ' . print_r($aws_data, true));
+		}
+		
+		// 发送到 AWS Bedrock
+		$response = $aws->handle_chat_message($aws_data);
+		
+		// 检查是否有工具调用
+		if (isset($response['tool_calls']) && !empty($response['tool_calls'])) {
+			error_log('检测到工具调用: ' . print_r($response['tool_calls'], true));
+			
+			// 如果是流式处理的第一阶段，保存工具调用到transients中
+			if ($streaming) {
+				// 生成唯一的流ID
+				$stream_id = uniqid('stream_');
+				
+				// 保存消息、历史和工具调用到transients中
+				set_transient('ai_chat_bedrock_message_' . $stream_id, $message, 3600); // 1小时过期
+				set_transient('ai_chat_bedrock_history_' . $stream_id, $history, 3600); // 1小时过期
+				set_transient('ai_chat_bedrock_tool_calls_' . $stream_id, $response['tool_calls'], 3600); // 1小时过期
+				
+				// 记录调试信息
+				error_log('流式处理中检测到工具调用，保存到transient，流ID: ' . $stream_id);
+				
+				// 返回成功响应，前端将使用这个响应创建EventSource
+				wp_send_json_success(array(
+					'message' => 'Streaming initialized with tool calls',
+					'stream_id' => $stream_id
+				));
+				return;
+			}
+		}
+		
+		// 如果是流式处理的第一阶段，保存消息和历史到transients中
+		if ($streaming) {
+			// 生成唯一的流ID
+			$stream_id = uniqid('stream_');
+			
+			// 保存消息和历史到transients中，使用流ID作为键
+			set_transient('ai_chat_bedrock_message_' . $stream_id, $message, 3600); // 1小时过期
+			set_transient('ai_chat_bedrock_history_' . $stream_id, $history, 3600); // 1小时过期
+			
+			// 记录调试信息
+			error_log('保存消息到transient，流ID: ' . $stream_id . ', 消息: ' . $message);
+			
+			// 返回成功响应，前端将使用这个响应创建EventSource
+			wp_send_json_success( array( 
+				'message' => 'Streaming initialized',
+				'stream_id' => $stream_id
+			) );
+			return;
+		}
+		
+		// 返回常规响应
+		wp_send_json($response);
 	}
 	
 	/**
@@ -306,11 +479,8 @@ class AI_Chat_Bedrock_Public {
 		// Store the result in the tool call
 		$tool_call['result'] = $result;
 		
-		error_log('AI Chat Bedrock Debug - Tool call result: ' . print_r($result, true));
-		
 		// Format the result as a string
 		$formatted_result = $this->format_tool_result($tool_call);
-		error_log('AI Chat Bedrock Debug - Formatted tool result: ' . $formatted_result);
 		
 		// Create a new conversation with Claude that includes the tool result
 		$messages = array();
@@ -369,6 +539,63 @@ class AI_Chat_Bedrock_Public {
 		
 		// Return the response
 		wp_send_json($response);
+	}
+
+	/**
+	 * Handle AJAX request to get tool call details.
+	 *
+	 * @since    1.0.7
+	 */
+	public function handle_get_tool_call() {
+		// Check nonce
+		if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_chat_bedrock_nonce')) {
+			wp_send_json_error(array('message' => 'Invalid security token.'));
+		}
+		
+		// Get message
+		$message = isset($_POST['message']) ? sanitize_text_field($_POST['message']) : '';
+		
+		if (empty($message)) {
+			wp_send_json_error(array('message' => 'Message is required.'));
+		}
+		
+		// 获取设置
+		$options = get_option('ai_chat_bedrock_settings');
+		$enable_mcp = isset($options['enable_mcp']) && $options['enable_mcp'] === 'on';
+		
+		// 如果启用了MCP，获取MCP集成
+		$mcp_integration = null;
+		if ($enable_mcp) {
+			require_once plugin_dir_path(dirname(__FILE__)) . 'includes/class-ai-chat-bedrock-mcp-integration.php';
+			$mcp_integration = new AI_Chat_Bedrock_MCP_Integration();
+		}
+		
+		// 准备发送到AWS Bedrock的数据
+		$aws_data = array(
+			'messages' => array(),
+			'message' => $message
+		);
+		
+		// 如果启用了MCP，添加MCP工具到payload
+		if ($enable_mcp && $mcp_integration) {
+			// 使用MCP集成添加工具到payload
+			$aws_data = $mcp_integration->add_mcp_tools_to_payload($aws_data, array('message' => $message));
+			error_log('添加MCP工具到payload: ' . print_r($aws_data, true));
+		}
+		
+		// 获取AWS实例
+		$aws = new AI_Chat_Bedrock_AWS();
+		
+		// 发送到AWS Bedrock
+		$response = $aws->handle_chat_message($aws_data);
+		
+		// 检查是否有工具调用
+		if (isset($response['tool_calls']) && !empty($response['tool_calls'])) {
+			error_log('检测到工具调用: ' . print_r($response['tool_calls'], true));
+			wp_send_json($response);
+		} else {
+			wp_send_json_error(array('message' => 'No tool calls found.'));
+		}
 	}
 
 	/**

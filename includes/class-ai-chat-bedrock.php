@@ -209,6 +209,8 @@ class AI_Chat_Bedrock {
 		$this->loader->add_action( 'wp_ajax_nopriv_ai_chat_bedrock_clear_history', $plugin_public, 'clear_chat_history' );
 		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_tool_results', $plugin_public, 'handle_tool_results' );
 		$this->loader->add_action( 'wp_ajax_nopriv_ai_chat_bedrock_tool_results', $plugin_public, 'handle_tool_results' );
+		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_get_tool_call', $plugin_public, 'handle_get_tool_call' );
+		$this->loader->add_action( 'wp_ajax_nopriv_ai_chat_bedrock_get_tool_call', $plugin_public, 'handle_get_tool_call' );
 		
 		// Initialize voice interaction
 		$voice_interaction = new AI_Chat_Bedrock_Voice_Interaction();

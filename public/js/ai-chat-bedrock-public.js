@@ -253,15 +253,19 @@ function handleStreamingResponse(options, $typing) {
                 return;
             }
             
-            // Now create EventSource for streaming
-            const params = new URLSearchParams();
-            for (const key in options.data) {
-                params.append(key, options.data[key]);
-            }
-            params.append('streaming', '1');
+            // 从初始响应中获取流ID
+            const stream_id = response.data?.stream_id || Date.now().toString();
+            console.log('Using stream ID:', stream_id);
+            
+            // 创建一个简化的URL，只包含必要的参数
+            const streamParams = new URLSearchParams();
+            streamParams.append('action', options.data.action);
+            streamParams.append('nonce', options.data.nonce);
+            streamParams.append('streaming', '1');
+            streamParams.append('stream_id', stream_id); // 使用从服务器返回的流ID
             
             // Create EventSource
-            const eventSourceUrl = `${options.url}?${params.toString()}`;
+            const eventSourceUrl = `${options.url}?${streamParams.toString()}`;
             console.log('Creating EventSource with URL:', eventSourceUrl);
             const eventSource = new EventSource(eventSourceUrl);
             
@@ -311,7 +315,7 @@ function handleStreamingResponse(options, $typing) {
                         return;
                     }
                     
-                    // Check for Claude format tool calls
+                    // Check for Claude format tool calls in content array
                     if (data.content && Array.isArray(data.content) && 
                         data.content.some(item => item && item.type === 'tool_use')) {
                         console.log('Claude tool_use detected in streaming response:', data.content);
@@ -322,6 +326,56 @@ function handleStreamingResponse(options, $typing) {
                         
                         // Handle tool calls
                         handleToolCalls(data, options.data.message);
+                        return;
+                    }
+                    
+                    // Check for Claude 3.7 format tool calls in type field
+                    if (data.type === 'content_block_start' && data.content_block && 
+                        data.content_block.type === 'tool_use') {
+                        console.log('Claude 3.7 tool_use detected in streaming response:', data);
+                        eventSource.close();
+                        
+                        // Remove typing indicator
+                        removeTypingIndicator($typing);
+                        
+                        // Create tool call object in the format expected by handleToolCalls
+                        const toolCall = {
+                            id: data.content_block.id || 'tool_call_' + Date.now(),
+                            name: data.content_block.name,
+                            parameters: data.content_block.input || {}
+                        };
+                        
+                        // Handle tool calls
+                        handleToolCalls({tool_calls: [toolCall]}, options.data.message);
+                        return;
+                    }
+                    
+                    // Check for stop_reason: tool_use in message_delta
+                    if (data.type === 'message_delta' && data.delta && 
+                        data.delta.stop_reason === 'tool_use') {
+                        console.log('Claude 3.7 tool_use stop reason detected:', data);
+                        eventSource.close();
+                        
+                        // We need to get the tool call details from previous events
+                        // This is handled by the server, so we'll make a new request to get the tool call
+                        $.ajax({
+                            url: options.url,
+                            method: 'POST',
+                            data: {
+                                action: 'ai_chat_bedrock_get_tool_call',
+                                nonce: options.data.nonce,
+                                message: options.data.message
+                            },
+                            success: function(response) {
+                                if (response.success && response.tool_calls) {
+                                    // Remove typing indicator
+                                    removeTypingIndicator($typing);
+                                    
+                                    // Handle tool calls
+                                    handleToolCalls(response, options.data.message);
+                                }
+                            }
+                        });
                         return;
                     }
                     
