@@ -139,7 +139,7 @@ class AI_Chat_Bedrock {
 		/**
 		 * The classes responsible for Nova Sonic WebSocket implementation.
 		 */
-		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-aws-sigv4.php';
+		// AWS SigV4 implementation is now integrated directly into the WebSocket classes
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-bedrock-websocket.php';
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-nova-sonic-api.php';
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-bedrock-websocket-proxy.php';

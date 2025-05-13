@@ -217,6 +217,8 @@ class AI_Chat_Bedrock_WP_MCP_Server {
     public function handle_tool_search_posts($request) {
         $params = $request->get_json_params();
         
+        error_log('AI Chat Bedrock Debug - search_posts params: ' . print_r($params, true));
+        
         $args = array(
             'post_type' => 'post',
             'post_status' => 'publish',
@@ -264,12 +266,11 @@ class AI_Chat_Bedrock_WP_MCP_Server {
             }
             wp_reset_postdata();
         }
+        
+        error_log('AI Chat Bedrock Debug - search_posts found ' . count($posts) . ' posts');
 
-        return rest_ensure_response(array(
-            'posts' => $posts,
-            'total' => $query->found_posts,
-            'max_pages' => $query->max_num_pages,
-        ));
+        // Return just the posts array for simpler processing
+        return rest_ensure_response($posts);
     }
 
     /**
@@ -282,6 +283,8 @@ class AI_Chat_Bedrock_WP_MCP_Server {
     public function handle_tool_get_post($request) {
         $params = $request->get_json_params();
         $post = null;
+        
+        error_log('AI Chat Bedrock Debug - get_post params: ' . print_r($params, true));
 
         if (isset($params['id']) && !empty($params['id'])) {
             $post = get_post(intval($params['id']));
@@ -299,12 +302,15 @@ class AI_Chat_Bedrock_WP_MCP_Server {
         }
 
         if (!$post) {
+            error_log('AI Chat Bedrock Debug - get_post: Post not found');
             return new WP_Error('post_not_found', 'Post not found', array('status' => 404));
         }
 
-        return rest_ensure_response(array(
-            'post' => $this->format_post($post, true),
-        ));
+        $formatted_post = $this->format_post($post, true);
+        error_log('AI Chat Bedrock Debug - get_post found post: ' . $formatted_post['title']);
+        
+        // Return just the post data for simpler processing
+        return rest_ensure_response($formatted_post);
     }
 
     /**
@@ -316,6 +322,8 @@ class AI_Chat_Bedrock_WP_MCP_Server {
      */
     public function handle_tool_get_categories($request) {
         $params = $request->get_json_params();
+        
+        error_log('AI Chat Bedrock Debug - get_categories params: ' . print_r($params, true));
         
         $args = array(
             'hide_empty' => isset($params['hide_empty']) ? (bool)$params['hide_empty'] : false,
@@ -335,11 +343,11 @@ class AI_Chat_Bedrock_WP_MCP_Server {
                 'url' => get_category_link($category->term_id),
             );
         }
+        
+        error_log('AI Chat Bedrock Debug - get_categories found ' . count($formatted_categories) . ' categories');
 
-        return rest_ensure_response(array(
-            'categories' => $formatted_categories,
-            'total' => count($formatted_categories),
-        ));
+        // Return just the categories array for simpler processing
+        return rest_ensure_response($formatted_categories);
     }
 
     /**
@@ -351,6 +359,8 @@ class AI_Chat_Bedrock_WP_MCP_Server {
      */
     public function handle_tool_get_tags($request) {
         $params = $request->get_json_params();
+        
+        error_log('AI Chat Bedrock Debug - get_tags params: ' . print_r($params, true));
         
         $args = array(
             'hide_empty' => isset($params['hide_empty']) ? (bool)$params['hide_empty'] : false,
@@ -370,11 +380,11 @@ class AI_Chat_Bedrock_WP_MCP_Server {
                 'url' => get_tag_link($tag->term_id),
             );
         }
+        
+        error_log('AI Chat Bedrock Debug - get_tags found ' . count($formatted_tags) . ' tags');
 
-        return rest_ensure_response(array(
-            'tags' => $formatted_tags,
-            'total' => count($formatted_tags),
-        ));
+        // Return just the tags array for simpler processing
+        return rest_ensure_response($formatted_tags);
     }
 
     /**
@@ -385,20 +395,25 @@ class AI_Chat_Bedrock_WP_MCP_Server {
      * @return   WP_REST_Response         The response object.
      */
     public function handle_tool_get_site_info($request) {
-        return rest_ensure_response(array(
-            'site_info' => array(
-                'name' => get_bloginfo('name'),
-                'description' => get_bloginfo('description'),
-                'url' => get_bloginfo('url'),
-                'admin_email' => get_bloginfo('admin_email'),
-                'language' => get_bloginfo('language'),
-                'version' => get_bloginfo('version'),
-                'post_count' => wp_count_posts()->publish,
-                'page_count' => wp_count_posts('page')->publish,
-                'category_count' => wp_count_terms('category'),
-                'tag_count' => wp_count_terms('post_tag'),
-            ),
-        ));
+        error_log('AI Chat Bedrock Debug - get_site_info called');
+        
+        $site_info = array(
+            'title' => get_bloginfo('name'),
+            'description' => get_bloginfo('description'),
+            'url' => get_bloginfo('url'),
+            'admin_email' => get_bloginfo('admin_email'),
+            'language' => get_bloginfo('language'),
+            'version' => get_bloginfo('version'),
+            'post_count' => wp_count_posts()->publish,
+            'page_count' => wp_count_posts('page')->publish,
+            'category_count' => wp_count_terms('category'),
+            'tag_count' => wp_count_terms('post_tag'),
+        );
+        
+        error_log('AI Chat Bedrock Debug - get_site_info result: ' . print_r($site_info, true));
+        
+        // Return just the site_info object for simpler processing
+        return rest_ensure_response($site_info);
     }
 
     /**

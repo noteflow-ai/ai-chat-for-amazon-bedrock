@@ -62,6 +62,8 @@ class AI_Chat_Bedrock_MCP_Client {
         
         // Load registered servers from options
         $this->load_servers();
+        
+        error_log('AI Chat Bedrock Debug - MCP Client initialized with ' . count($this->servers) . ' servers');
     }
 
     /**
@@ -74,6 +76,9 @@ class AI_Chat_Bedrock_MCP_Client {
         $saved_servers = get_option('ai_chat_bedrock_mcp_servers', array());
         if (!empty($saved_servers) && is_array($saved_servers)) {
             $this->servers = $saved_servers;
+            error_log('AI Chat Bedrock Debug - Loaded ' . count($this->servers) . ' MCP servers from options');
+        } else {
+            error_log('AI Chat Bedrock Debug - No MCP servers found in options');
         }
     }
 
@@ -85,6 +90,7 @@ class AI_Chat_Bedrock_MCP_Client {
      */
     private function save_servers() {
         update_option('ai_chat_bedrock_mcp_servers', $this->servers);
+        error_log('AI Chat Bedrock Debug - Saved ' . count($this->servers) . ' MCP servers to options');
     }
 
     /**
@@ -155,11 +161,14 @@ class AI_Chat_Bedrock_MCP_Client {
      */
     public function discover_server_tools($server_name) {
         if (!isset($this->servers[$server_name])) {
+            error_log('MCP server not found: ' . $server_name);
             return array();
         }
 
         $server_url = $this->servers[$server_name]['url'];
         $discovery_url = trailingslashit($server_url) . 'mcp/discover';
+        
+        error_log('MCP discovery URL: ' . $discovery_url);
 
         $response = wp_remote_get($discovery_url, array(
             'timeout' => $this->timeout,
@@ -176,6 +185,7 @@ class AI_Chat_Bedrock_MCP_Client {
         $status_code = wp_remote_retrieve_response_code($response);
         if ($status_code !== 200) {
             error_log('MCP discovery failed with status code: ' . $status_code);
+            error_log('Response body: ' . wp_remote_retrieve_body($response));
             return array();
         }
 
@@ -183,13 +193,15 @@ class AI_Chat_Bedrock_MCP_Client {
         $data = json_decode($body, true);
 
         if (empty($data) || !isset($data['tools']) || !is_array($data['tools'])) {
-            error_log('Invalid MCP discovery response');
+            error_log('Invalid MCP discovery response: ' . $body);
             return array();
         }
 
         // Update server tools
         $this->servers[$server_name]['tools'] = $data['tools'];
         $this->save_servers();
+        
+        error_log('MCP tools discovered: ' . count($data['tools']));
 
         return $data['tools'];
     }
@@ -359,11 +371,14 @@ class AI_Chat_Bedrock_MCP_Client {
      */
     public function is_server_available($server_name) {
         if (!isset($this->servers[$server_name])) {
+            error_log('MCP server not found for availability check: ' . $server_name);
             return false;
         }
 
         $server_url = $this->servers[$server_name]['url'];
         $health_url = trailingslashit($server_url) . 'mcp/health';
+        
+        error_log('Checking MCP server health at: ' . $health_url);
 
         $response = wp_remote_get($health_url, array(
             'timeout' => 5, // Short timeout for health check
@@ -373,10 +388,16 @@ class AI_Chat_Bedrock_MCP_Client {
         ));
 
         if (is_wp_error($response)) {
+            error_log('MCP server health check error: ' . $response->get_error_message());
             return false;
         }
 
         $status_code = wp_remote_retrieve_response_code($response);
-        return $status_code === 200;
+        $is_available = $status_code === 200;
+        
+        error_log('MCP server health check result for ' . $server_name . ': ' . 
+                 ($is_available ? 'available' : 'unavailable') . ' (status code: ' . $status_code . ')');
+        
+        return $is_available;
     }
 }

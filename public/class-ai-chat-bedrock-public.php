@@ -171,13 +171,14 @@ class AI_Chat_Bedrock_Public {
 	 */
 	public function handle_chat_message() {
 		// Check nonce
-		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'ai_chat_bedrock_nonce' ) ) {
+		if ( ! isset( $_REQUEST['nonce'] ) || ! wp_verify_nonce( $_REQUEST['nonce'], 'ai_chat_bedrock_nonce' ) ) {
 			wp_send_json_error( array( 'message' => 'Invalid security token.' ) );
 		}
 		
 		// Get message and history
-		$message = isset( $_POST['message'] ) ? sanitize_text_field( $_POST['message'] ) : '';
-		$history = isset( $_POST['history'] ) ? json_decode( stripslashes( $_POST['history'] ), true ) : array();
+		$message = isset( $_REQUEST['message'] ) ? sanitize_text_field( $_REQUEST['message'] ) : '';
+		$history = isset( $_REQUEST['history'] ) ? json_decode( stripslashes( $_REQUEST['history'] ), true ) : array();
+		$streaming = isset( $_REQUEST['streaming'] ) && $_REQUEST['streaming'] === '1';
 		
 		if ( empty( $message ) ) {
 			wp_send_json_error( array( 'message' => 'Message is required.' ) );
@@ -186,11 +187,52 @@ class AI_Chat_Bedrock_Public {
 		// Get AWS instance
 		$aws = new AI_Chat_Bedrock_AWS();
 		
-		// Send to AWS Bedrock
-		$response = $aws->handle_chat_message( array( 'messages' => $history, 'message' => $message ) );
-		
-		// Return the response
-		wp_send_json( $response );
+		if ( $streaming ) {
+			// 设置流式响应头
+			header('Content-Type: text/event-stream');
+			header('Cache-Control: no-cache');
+			header('Connection: keep-alive');
+			header('X-Accel-Buffering: no'); // 禁用 Nginx 缓冲
+			
+			// 清除并关闭之前的输出缓冲
+			if (ob_get_level()) ob_end_clean();
+			
+			// 发送初始响应
+			echo "data: " . json_encode(array(
+				'success' => true,
+				'data' => array(
+					'message' => 'Streaming started'
+				)
+			)) . "\n\n";
+			flush();
+			
+			// 设置流式回调
+			$streaming_callback = function($data) {
+				echo "data: " . json_encode($data) . "\n\n";
+				flush();
+			};
+			
+			// 发送到 AWS Bedrock
+			$response = $aws->handle_chat_message(array(
+				'messages' => $history,
+				'message' => $message,
+				'streaming_callback' => $streaming_callback
+			));
+			
+			// 发送结束标记
+			echo "data: " . json_encode(array('end' => true)) . "\n\n";
+			flush();
+			exit;
+		} else {
+			// 发送到 AWS Bedrock
+			$response = $aws->handle_chat_message(array(
+				'messages' => $history,
+				'message' => $message
+			));
+			
+			// 返回响应
+			wp_send_json($response);
+		}
 	}
 	
 	/**
@@ -215,68 +257,176 @@ class AI_Chat_Bedrock_Public {
 	 */
 	public function handle_tool_results() {
 		// Check nonce
-		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'ai_chat_bedrock_nonce' ) ) {
-			wp_send_json_error( array( 'message' => 'Invalid security token.' ) );
+		if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_chat_bedrock_nonce')) {
+			wp_send_json_error(array('message' => 'Invalid security token.'));
 		}
 		
 		// Get tool calls and original message
-		$tool_calls = isset( $_POST['tool_calls'] ) ? json_decode( stripslashes( $_POST['tool_calls'] ), true ) : array();
-		$original_message = isset( $_POST['original_message'] ) ? sanitize_text_field( $_POST['original_message'] ) : '';
-		$history = isset( $_POST['history'] ) ? json_decode( stripslashes( $_POST['history'] ), true ) : array();
+		$tool_calls = isset($_POST['tool_calls']) ? json_decode(stripslashes($_POST['tool_calls']), true) : array();
+		$original_message = isset($_POST['original_message']) ? sanitize_text_field($_POST['original_message']) : '';
+		$history = isset($_POST['history']) ? json_decode(stripslashes($_POST['history']), true) : array();
 		
-		if ( empty( $tool_calls ) ) {
-			wp_send_json_error( array( 'message' => 'No tool calls provided.' ) );
+		if (empty($tool_calls)) {
+			wp_send_json_error(array('message' => 'No tool calls provided.'));
 		}
 		
-		// Log the tool calls
-		error_log( 'AI Chat Bedrock - Tool calls received: ' . print_r( $tool_calls, true ) );
+		error_log('AI Chat Bedrock Debug - Tool calls to process: ' . print_r($tool_calls, true));
 		
-		// Create a new message array with the tool results
+		// Process the first tool call (Claude typically makes one call at a time)
+		$tool_call = $tool_calls[0];
+		$tool_call_id = $tool_call['id'];
+		$tool_name = $tool_call['name'];
+		$parameters = isset($tool_call['parameters']) ? $tool_call['parameters'] : array();
+		
+		// Execute the tool call to get the result
+		error_log('AI Chat Bedrock Debug - Executing tool call: ' . $tool_name);
+		
+		// Get MCP client
+		require_once plugin_dir_path(dirname(__FILE__)) . 'includes/class-ai-chat-bedrock-mcp-client.php';
+		$mcp_client = new AI_Chat_Bedrock_MCP_Client();
+		
+		// Parse tool name to get server name and tool name
+		$parts = explode('___', $tool_name);
+		if (count($parts) !== 2) {
+			wp_send_json_error(array('message' => 'Invalid tool name format.'));
+			return;
+		}
+		
+		$server_name = $parts[0];
+		$tool_name_only = $parts[1];
+		
+		// Call the tool
+		$result = $mcp_client->call_tool($server_name, $tool_name_only, $parameters);
+		
+		if (is_wp_error($result)) {
+			wp_send_json_error(array('message' => 'Tool call failed: ' . $result->get_error_message()));
+			return;
+		}
+		
+		// Store the result in the tool call
+		$tool_call['result'] = $result;
+		
+		error_log('AI Chat Bedrock Debug - Tool call result: ' . print_r($result, true));
+		
+		// Format the result as a string
+		$formatted_result = $this->format_tool_result($tool_call);
+		error_log('AI Chat Bedrock Debug - Formatted tool result: ' . $formatted_result);
+		
+		// Create a new conversation with Claude that includes the tool result
 		$messages = array();
 		
-		// Add history messages
-		if ( ! empty( $history ) ) {
-			foreach ( $history as $msg ) {
-				$messages[] = $msg;
-			}
-		}
-		
-		// Add the original user message if not in history
-		if ( ! empty( $original_message ) ) {
-			$messages[] = array( 'role' => 'user', 'content' => $original_message );
-		}
-		
-		// Add the assistant's response with tool calls
-		$messages[] = array( 
-			'role' => 'assistant', 
-			'content' => 'I need to search for information about your query.',
-			'tool_calls' => $tool_calls
-		);
-		
-		// Add a user message with tool results
-		$tool_results_message = "I've found the following information:\n\n";
-		foreach ($tool_calls as $tool_call) {
-			if (isset($tool_call['result'])) {
-				$tool_name = explode('___', $tool_call['name'])[1] ?? $tool_call['name'];
-				$tool_results_message .= "Results from " . $tool_name . ":\n";
-				$tool_results_message .= json_encode($tool_call['result'], JSON_PRETTY_PRINT);
-				$tool_results_message .= "\n\n";
-			}
-		}
-		$tool_results_message .= "Please provide a complete and helpful response based on these results.";
-		
+		// Add the original user query
 		$messages[] = array(
 			'role' => 'user',
-			'content' => $tool_results_message
+			'content' => array(
+				array(
+					'type' => 'text',
+					'text' => $original_message
+				)
+			)
 		);
+		
+		// Add Claude's response with the tool call
+		$messages[] = array(
+			'role' => 'assistant',
+			'content' => array(
+				array(
+					'type' => 'text',
+					'text' => '我需要查找相关信息。'
+				),
+				array(
+					'type' => 'tool_use',
+					'id' => $tool_call_id,
+					'name' => $tool_name,
+					'input' => (object)$parameters  // 将参数转换为对象，确保即使是空数组也会变成空对象
+				)
+			)
+		);
+		
+		// Add user message with tool result
+		$messages[] = array(
+			'role' => 'user',
+			'content' => array(
+				array(
+					'type' => 'tool_result',
+					'tool_use_id' => $tool_call_id,
+					'content' => $formatted_result
+				),
+				array(
+					'type' => 'text',
+					'text' => '请根据上面的工具调用结果，用中文总结这些信息并提供完整的回答。'
+				)
+			)
+		);
+		
+		error_log('AI Chat Bedrock Debug - Final messages for Claude: ' . print_r($messages, true));
 		
 		// Get AWS instance
 		$aws = new AI_Chat_Bedrock_AWS();
 		
 		// Send to AWS Bedrock
-		$response = $aws->handle_chat_message( array( 'messages' => $messages ) );
+		$response = $aws->handle_chat_message(array('messages' => $messages));
 		
 		// Return the response
-		wp_send_json( $response );
+		wp_send_json($response);
+	}
+
+	/**
+	 * Format tool result based on tool type
+	 */
+	private function format_tool_result($tool_call) {
+		$tool_name = explode('___', $tool_call['name'])[1] ?? $tool_call['name'];
+		$result = $tool_call['result'];
+		
+		switch ($tool_name) {
+			case 'search_posts':
+				if (!is_array($result)) return json_encode($result);
+				
+				$output = "找到 " . count($result) . " 篇文章：\n\n";
+				foreach ($result as $post) {
+					$output .= "标题：" . ($post['title'] ?? '无标题') . "\n";
+					$output .= "发布日期：" . ($post['date'] ?? '未知日期') . "\n";
+					$output .= "链接：" . ($post['url'] ?? '无链接') . "\n";
+					$output .= "摘要：" . ($post['excerpt'] ?? '无摘要') . "\n\n";
+				}
+				return $output;
+				
+			case 'get_post':
+				if (!isset($result['title'])) return json_encode($result);
+				
+				return "文章详情：\n" .
+					   "标题：" . ($result['title'] ?? '无标题') . "\n" .
+					   "发布日期：" . ($result['date'] ?? '未知日期') . "\n" .
+					   "内容：" . ($result['content'] ?? '无内容') . "\n";
+				
+			case 'get_categories':
+				if (!is_array($result)) return json_encode($result);
+				
+				$output = "分类列表：\n\n";
+				foreach ($result as $category) {
+					$output .= "- " . ($category['name'] ?? '未命名') . 
+							  " (" . ($category['count'] ?? 0) . " 篇文章)\n";
+				}
+				return $output;
+				
+			case 'get_tags':
+				if (!is_array($result)) return json_encode($result);
+				
+				$output = "标签列表：\n\n";
+				foreach ($result as $tag) {
+					$output .= "- " . ($tag['name'] ?? '未命名') . 
+							  " (" . ($tag['count'] ?? 0) . " 篇文章)\n";
+				}
+				return $output;
+				
+			case 'get_site_info':
+				return "网站信息：\n" .
+					   "标题：" . ($result['title'] ?? '未知') . "\n" .
+					   "描述：" . ($result['description'] ?? '无描述') . "\n" .
+					   "网址：" . ($result['url'] ?? '无网址') . "\n";
+				
+			default:
+				return json_encode($result);
+		}
 	}
 }

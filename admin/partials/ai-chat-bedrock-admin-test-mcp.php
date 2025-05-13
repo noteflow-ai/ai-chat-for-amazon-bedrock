@@ -227,10 +227,14 @@ jQuery(document).ready(function($) {
         const isEnabled = $(this).is(':checked');
         $('#ai-chat-bedrock-register-wp-mcp-server').toggleClass('hidden', !isEnabled);
         
+        console.log('Toggle MCP settings (test page):', isEnabled);
+        console.log('Using nonce:', ai_chat_bedrock_admin.nonce);
+        
         // Save the setting
         $.ajax({
             url: ajaxurl,
             type: 'POST',
+            dataType: 'json',
             data: {
                 action: 'ai_chat_bedrock_save_option',
                 nonce: ai_chat_bedrock_admin.nonce,
@@ -238,13 +242,16 @@ jQuery(document).ready(function($) {
                 option_value: isEnabled ? '1' : '0'
             },
             success: function(response) {
+                console.log('AJAX success response:', response);
                 if (response.success) {
                     AIChatBedrockAdmin.showNotice(ai_chat_bedrock_admin.i18n.settings_saved, 'success');
                 } else {
                     AIChatBedrockAdmin.showNotice(response.data.message, 'error');
                 }
             },
-            error: function() {
+            error: function(xhr, status, error) {
+                console.error('AJAX error:', status, error);
+                console.error('Response text:', xhr.responseText);
                 AIChatBedrockAdmin.showNotice(ai_chat_bedrock_admin.i18n.ajax_error, 'error');
             }
         });
@@ -252,8 +259,27 @@ jQuery(document).ready(function($) {
 
     // Register WordPress MCP Server
     $('#ai_chat_bedrock_register_wp_mcp_server').on('click', function() {
-        const serverName = $('#ai_chat_bedrock_wp_mcp_server_name').val().trim();
-        const serverUrl = $('#ai_chat_bedrock_wp_mcp_server_url').val().trim();
+        console.log('Register WordPress MCP Server button clicked');
+        
+        // Try different possible field IDs
+        const $serverName = $('#ai_chat_bedrock_wp_mcp_server_name');
+        const $serverUrl = $('#ai_chat_bedrock_wp_mcp_server_url');
+        
+        console.log('Server name field found:', $serverName.length > 0);
+        console.log('Server URL field found:', $serverUrl.length > 0);
+        
+        // Check if elements exist
+        if (!$serverName.length || !$serverUrl.length) {
+            console.error('Server name or URL input fields not found');
+            console.log('Available form fields:', $('input[type="text"], input[type="url"]').map(function() {
+                return this.id;
+            }).get());
+            AIChatBedrockAdmin.showNotice('Form fields not found', 'error');
+            return;
+        }
+        
+        const serverName = $serverName.val() ? $serverName.val().trim() : '';
+        const serverUrl = $serverUrl.val() ? $serverUrl.val().trim() : '';
         
         if (!serverName || !serverUrl) {
             AIChatBedrockAdmin.showNotice(ai_chat_bedrock_admin.i18n.missing_fields, 'error');
@@ -265,6 +291,7 @@ jQuery(document).ready(function($) {
         $.ajax({
             url: ajaxurl,
             type: 'POST',
+            dataType: 'json',
             data: {
                 action: 'ai_chat_bedrock_register_mcp_server',
                 nonce: ai_chat_bedrock_admin.mcp_nonce,
@@ -280,8 +307,13 @@ jQuery(document).ready(function($) {
                     AIChatBedrockAdmin.showNotice(response.data.message, 'error');
                 }
             },
-            error: function() {
+            error: function(xhr, status, error) {
                 $('#ai_chat_bedrock_register_wp_mcp_server').prop('disabled', false).text('<?php esc_html_e('Register WordPress MCP Server', 'ai-chat-for-amazon-bedrock'); ?>');
+                console.error('AJAX error details:', {
+                    status: status,
+                    error: error,
+                    responseText: xhr.responseText
+                });
                 AIChatBedrockAdmin.showNotice(ai_chat_bedrock_admin.i18n.ajax_error, 'error');
             }
         });

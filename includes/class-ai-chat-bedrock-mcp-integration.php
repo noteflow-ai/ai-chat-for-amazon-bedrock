@@ -53,11 +53,17 @@ class AI_Chat_Bedrock_MCP_Integration {
         $loader->add_action('wp_ajax_ai_chat_bedrock_get_mcp_servers', $this, 'ajax_get_mcp_servers');
         $loader->add_action('wp_ajax_ai_chat_bedrock_discover_mcp_tools', $this, 'ajax_discover_mcp_tools');
         
+        // 添加对GET请求的支持
+        $loader->add_action('wp_ajax_nopriv_ai_chat_bedrock_discover_mcp_tools', $this, 'ajax_discover_mcp_tools');
+        
         // Filter to modify AI message processing to include MCP tools
         $loader->add_filter('ai_chat_bedrock_message_payload', $this, 'add_mcp_tools_to_payload', 10, 2);
         
         // Filter to handle MCP tool calls in AI responses
         $loader->add_filter('ai_chat_bedrock_process_response', $this, 'process_mcp_tool_calls', 10, 2);
+        
+        // Add debug log
+        error_log('AI Chat Bedrock Debug - MCP hooks registered');
     }
 
     /**
@@ -152,7 +158,7 @@ class AI_Chat_Bedrock_MCP_Integration {
         // Check server availability
         if (is_array($servers)) {
             foreach ($servers as $name => &$server) {
-                $server['available'] = $this->mcp_client->is_server_available($name);
+                $server['status'] = $this->mcp_client->is_server_available($name) ? 'available' : 'unavailable';
             }
         } else {
             $servers = array();
@@ -167,21 +173,29 @@ class AI_Chat_Bedrock_MCP_Integration {
      * @since    1.0.7
      */
     public function ajax_discover_mcp_tools() {
+        // 添加调试日志
+        error_log('ajax_discover_mcp_tools called with data: ' . print_r($_REQUEST, true));
+        
         // Check permissions
         if (!current_user_can('manage_options')) {
             wp_send_json_error(array('message' => __('Permission denied', 'ai-chat-for-amazon-bedrock')), 403);
+            return;
         }
 
-        // Verify nonce
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_chat_bedrock_mcp_nonce')) {
+        // Verify nonce - 同时处理GET和POST请求
+        $nonce = isset($_REQUEST['nonce']) ? $_REQUEST['nonce'] : '';
+        if (!wp_verify_nonce($nonce, 'ai_chat_bedrock_mcp_nonce')) {
+            error_log('MCP nonce verification failed. Received: ' . $nonce);
             wp_send_json_error(array('message' => __('Security check failed', 'ai-chat-for-amazon-bedrock')), 403);
+            return;
         }
 
         // Get server name
-        $server_name = isset($_POST['server_name']) ? sanitize_text_field($_POST['server_name']) : '';
+        $server_name = isset($_REQUEST['server_name']) ? sanitize_text_field($_REQUEST['server_name']) : '';
 
         if (empty($server_name)) {
             wp_send_json_error(array('message' => __('Server name is required', 'ai-chat-for-amazon-bedrock')), 400);
+            return;
         }
 
         // Discover tools
@@ -209,6 +223,8 @@ class AI_Chat_Bedrock_MCP_Integration {
         // Check if MCP tools are enabled in settings
         $enable_mcp = get_option('ai_chat_bedrock_enable_mcp', false);
         
+        error_log('AI Chat Bedrock Debug - MCP enabled: ' . ($enable_mcp ? 'true' : 'false'));
+        
         if (!$enable_mcp) {
             error_log('AI Chat Bedrock Debug - MCP is disabled, not adding tools to payload');
             return $payload;
@@ -226,13 +242,24 @@ class AI_Chat_Bedrock_MCP_Integration {
         // Format tools for Claude
         $claude_tools = [];
         foreach ($mcp_tools as $tool) {
+            // Ensure parameters exists and has required structure
+            if (!isset($tool['parameters']) || !is_array($tool['parameters'])) {
+                error_log('AI Chat Bedrock Debug - Tool missing parameters: ' . $tool['name']);
+                $tool['parameters'] = array(
+                    'type' => 'object',
+                    'properties' => new stdClass(),
+                    'required' => array()
+                );
+            }
+            
             // Ensure properties is an object, not an array
             $properties = isset($tool['parameters']['properties']) ? $tool['parameters']['properties'] : new stdClass();
             if (is_array($properties) && empty($properties)) {
                 $properties = new stdClass(); // Convert empty array to empty object
             }
             
-            $claude_tools[] = [
+            // Create Claude-compatible tool format
+            $claude_tool = [
                 'name' => $tool['name'],
                 'description' => $tool['description'],
                 'input_schema' => [
@@ -241,12 +268,39 @@ class AI_Chat_Bedrock_MCP_Integration {
                     'required' => isset($tool['parameters']['required']) ? $tool['parameters']['required'] : []
                 ]
             ];
+            
+            $claude_tools[] = $claude_tool;
+            error_log('AI Chat Bedrock Debug - Added tool to Claude format: ' . $tool['name']);
         }
 
         // Add tools to payload
         $payload['tools'] = $claude_tools;
         
+        error_log('AI Chat Bedrock Debug - Number of tools added to payload: ' . count($claude_tools));
         error_log('AI Chat Bedrock Debug - Tools added to payload: ' . print_r($claude_tools, true));
+        
+        // Add system message to instruct Claude to use tools
+        if (!empty($claude_tools)) {
+            // For Bedrock Claude, use the top-level system parameter instead of a system role message
+            $system_message = 'You have access to WordPress tools that allow you to search and retrieve content from the website. When asked about posts, pages, categories, or other WordPress content, use these tools to provide accurate information. Always use the tools when appropriate.';
+            
+            // Remove any existing system message in the messages array
+            if (isset($payload['messages']) && is_array($payload['messages'])) {
+                $filtered_messages = [];
+                foreach ($payload['messages'] as $msg) {
+                    if (!isset($msg['role']) || $msg['role'] !== 'system') {
+                        $filtered_messages[] = $msg;
+                    }
+                }
+                $payload['messages'] = $filtered_messages;
+            }
+            
+            // Add the system message as a top-level parameter
+            $payload['system'] = $system_message;
+            
+            error_log('AI Chat Bedrock Debug - Added top-level system parameter for Bedrock Claude');
+        }
+        
         error_log('AI Chat Bedrock Debug - Final payload with tools: ' . print_r($payload, true));
 
         return $payload;

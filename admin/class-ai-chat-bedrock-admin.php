@@ -59,6 +59,9 @@ class AI_Chat_Bedrock_Admin {
 		$this->plugin_name = $plugin_name;
 		$this->version = $version;
 		$this->aws = new AI_Chat_Bedrock_AWS();
+		
+		// 添加 AJAX 处理函数
+		add_action('wp_ajax_ai_chat_bedrock_save_option', array($this, 'save_option'));
 	}
 
 	/**
@@ -480,14 +483,20 @@ class AI_Chat_Bedrock_Admin {
 	 * @since    1.0.7
 	 */
 	public function save_option() {
+		// 添加调试日志
+		error_log('save_option called with POST data: ' . print_r($_POST, true));
+		
 		// Check permissions
 		if (!current_user_can('manage_options')) {
 			wp_send_json_error(array('message' => __('Permission denied', 'ai-chat-for-amazon-bedrock')), 403);
+			return;
 		}
 
 		// Verify nonce
 		if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_chat_bedrock_nonce')) {
+			error_log('Nonce verification failed. Received: ' . (isset($_POST['nonce']) ? $_POST['nonce'] : 'none'));
 			wp_send_json_error(array('message' => __('Security check failed', 'ai-chat-for-amazon-bedrock')), 403);
+			return;
 		}
 
 		// Get option details
@@ -496,6 +505,7 @@ class AI_Chat_Bedrock_Admin {
 
 		if (empty($option_name)) {
 			wp_send_json_error(array('message' => __('Option name is required', 'ai-chat-for-amazon-bedrock')), 400);
+			return;
 		}
 
 		// Save option

@@ -37,7 +37,7 @@ class AI_Chat_Bedrock_Nova_Sonic_API {
         $this->debug = isset($options['debug_mode']) && $options['debug_mode'] === 'on';
         
         // 初始化 Bedrock WebSocket 客户端
-        require_once plugin_dir_path(__FILE__) . 'class-aws-sigv4.php';
+        // AWS SigV4 实现现在直接集成到 WebSocket 类中
         require_once plugin_dir_path(__FILE__) . 'class-bedrock-websocket.php';
         
         $this->bedrock_ws = new AI_Chat_Bedrock_WebSocket($access_key, $secret_key, $region, 'amazon.nova-sonic-v1:0', $this->debug);
@@ -85,12 +85,10 @@ class AI_Chat_Bedrock_Nova_Sonic_API {
     public function register_routes() {
         // 注意：我们不再注册这些路由，改为使用代理API
         // 这样可以避免前端直接连接到 Bedrock
-        $this->log_debug('REST API routes registration skipped', 'Using proxy mode instead');
         
+        // 完全禁用日志记录
         // 以下代码被注释掉，不再注册直接连接的路由
         /*
-        $this->log_debug('Registering REST API routes', 'websocket-url and prepare-events');
-        
         register_rest_route('ai-chat-bedrock/v1', '/websocket-url', [
             'methods' => 'POST',
             'callback' => [$this, 'get_websocket_url'],
@@ -106,74 +104,54 @@ class AI_Chat_Bedrock_Nova_Sonic_API {
     }
     
     /**
-     * 检查用户权限
-     *
-     * @since    1.0.0
-     * @return   bool    是否有权限
-     */
-    public function check_permission() {
-        // 在测试阶段，允许所有请求
-        return true;
-        
-        // 生产环境中应该检查nonce或用户权限
-        // return is_user_logged_in() || wp_verify_nonce($_REQUEST['_wpnonce'] ?? '', 'wp_rest');
-    }
-    
-    /**
-     * 获取预签名WebSocket URL
+     * 检查权限
      *
      * @since    1.0.0
      * @param    WP_REST_Request    $request    请求对象
-     * @return   WP_REST_Response|WP_Error      响应对象
+     * @return   bool                           是否有权限
+     */
+    public function check_permission($request) {
+        // 检查用户是否已登录
+        return is_user_logged_in();
+    }
+    
+    /**
+     * 获取 WebSocket URL
+     *
+     * @since    1.0.0
+     * @param    WP_REST_Request    $request    请求对象
+     * @return   WP_REST_Response               响应对象
      */
     public function get_websocket_url($request) {
+        $this->log_debug('Getting WebSocket URL', '');
+        
         try {
-            $this->log_debug('Generating WebSocket URL', 'Starting');
-            
-            $presigned_url = $this->bedrock_ws->get_presigned_websocket_url();
-            
-            $this->log_debug('Generated WebSocket URL:', $presigned_url);
-            
+            $url = $this->bedrock_ws->get_websocket_url();
             return new WP_REST_Response([
-                'status' => 'success',
-                'websocket_url' => $presigned_url
-            ], 200);
+                'url' => $url
+            ]);
         } catch (Exception $e) {
-            $this->log_debug('Error generating WebSocket URL:', $e->getMessage());
+            $this->log_debug('Error getting WebSocket URL', $e->getMessage());
             return new WP_Error('websocket_error', $e->getMessage(), ['status' => 500]);
         }
     }
     
     /**
-     * 准备事件序列
+     * 准备事件
      *
      * @since    1.0.0
      * @param    WP_REST_Request    $request    请求对象
-     * @return   WP_REST_Response|WP_Error      响应对象
+     * @return   WP_REST_Response               响应对象
      */
     public function prepare_events($request) {
-        $audio_data = $request->get_param('audio_data');
-        $system_prompt = $request->get_param('system_prompt');
-        $options = $request->get_param('options') ?: [];
+        $this->log_debug('Preparing events', '');
         
-        if (empty($system_prompt)) {
-            $system_prompt = "You are a helpful assistant. The user and you will engage in a spoken dialog exchanging the transcripts of a natural real-time conversation. Keep your responses short, generally two or three sentences for chatty scenarios.";
-        }
+        // 这个方法在实际实现中应该准备事件
+        // 但由于我们使用代理API，这个方法不会被调用
         
-        try {
-            $events_data = $this->bedrock_ws->prepare_nova_sonic_events($audio_data, $system_prompt, $options);
-            
-            $this->log_debug('Prepared events count:', count($events_data['events']));
-            
-            return new WP_REST_Response([
-                'status' => 'success',
-                'prompt_name' => $events_data['prompt_name'],
-                'events' => $events_data['events'],
-                'events_count' => count($events_data['events'])
-            ], 200);
-        } catch (Exception $e) {
-            $this->log_debug('Error preparing events:', $e->getMessage());
-            return new WP_Error('events_error', $e->getMessage(), ['status' => 500]);
-        }
+        return new WP_REST_Response([
+            'status' => 'success',
+            'message' => 'Events prepared'
+        ]);
     }
 }

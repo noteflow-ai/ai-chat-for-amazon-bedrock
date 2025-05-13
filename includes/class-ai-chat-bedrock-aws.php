@@ -88,6 +88,11 @@ class AI_Chat_Bedrock_AWS {
 		// Format the message based on the model
 		$payload = $this->format_payload_for_model( $model_id, $message_data, $max_tokens, $temperature );
 		
+		// Apply filters to modify payload (this is where MCP tools should be added)
+		error_log('AI Chat Bedrock Debug - Before applying filters to payload');
+		$payload = apply_filters('ai_chat_bedrock_message_payload', $payload, $message_data);
+		error_log('AI Chat Bedrock Debug - After applying filters to payload');
+		
 		// Debug log the full payload
 		if ($this->debug) {
 			$this->log_debug('Full payload before sending:', $payload);
@@ -150,6 +155,14 @@ class AI_Chat_Bedrock_AWS {
 	 */
 	private function format_payload_for_model( $model_id, $message_data, $max_tokens, $temperature ) {
 		$messages = isset( $message_data['messages'] ) ? $message_data['messages'] : array();
+		$user_message = isset( $message_data['message'] ) ? $message_data['message'] : '';
+		
+		// Debug log the input data
+		if ($this->debug) {
+			$this->log_debug('Message data received:', $message_data);
+			$this->log_debug('Messages array:', $messages);
+			$this->log_debug('User message:', $user_message);
+		}
 		
 		// Default payload structure
 		$payload = array(
@@ -159,6 +172,31 @@ class AI_Chat_Bedrock_AWS {
 		
 		// Store original payload for tools and other extensions
 		$original_payload = $message_data;
+		
+		// 确保至少有一条消息
+		if (empty($messages)) {
+			// 如果有用户消息但没有历史消息，创建一个用户消息
+			if (!empty($user_message)) {
+				$messages[] = array(
+					'role' => 'user',
+					'content' => $user_message
+				);
+				
+				if ($this->debug) {
+					$this->log_debug('Added user message to empty messages array:', $user_message);
+				}
+			} else {
+				// 如果既没有历史消息也没有用户消息，添加一个默认消息
+				$messages[] = array(
+					'role' => 'user',
+					'content' => 'What are the recent posts on this site?'
+				);
+				
+				if ($this->debug) {
+					$this->log_debug('Added default message to empty messages array', '');
+				}
+			}
+		}
 		
 		// Format based on model provider
 		if ( strpos( $model_id, 'anthropic.claude' ) !== false ) {
@@ -178,14 +216,9 @@ class AI_Chat_Bedrock_AWS {
 			// 重新索引数组
 			$messages = array_values( $messages );
 			
-			// 如果有系统消息，将其添加到第一个用户消息的前面
-			if ( !empty( $system_content ) && !empty( $messages ) ) {
-				foreach ( $messages as $key => $message ) {
-					if ( $message['role'] === 'user' ) {
-						$messages[$key]['content'] = $system_content . "\n\n" . $message['content'];
-						break;
-					}
-				}
+			// 如果有系统消息，将其添加为顶级参数
+			if ( !empty( $system_content ) ) {
+				$payload['system'] = $system_content;
 			}
 			
 			// 格式化消息，确保角色交替
@@ -193,21 +226,35 @@ class AI_Chat_Bedrock_AWS {
 			$last_role = null;
 			
 			foreach ( $messages as $message ) {
+				// 检查消息格式，确保content是正确的格式
+				if (isset($message['content']) && !is_array($message['content']) && 
+					($message['role'] === 'user' || $message['role'] === 'assistant')) {
+					// 将字符串content转换为Claude 3.7需要的数组格式
+					$message['content'] = array(
+						array(
+							'type' => 'text',
+							'text' => $message['content']
+						)
+					);
+				}
+				
 				// 只保留用户和助手角色
-				if ( $message['role'] === 'user' || $message['role'] === 'assistant' ) {
+				if ( $message['role'] === 'user' || $message['role'] === 'assistant' || $message['role'] === 'tool' ) {
 					// 如果当前消息与上一条消息角色相同，需要插入一个空的对方角色消息
-					if ( $last_role === $message['role'] ) {
+					if ( $last_role === $message['role'] && $message['role'] !== 'tool' ) {
 						$empty_role = $message['role'] === 'user' ? 'assistant' : 'user';
 						$formatted_messages[] = array(
 							'role' => $empty_role,
-							'content' => $empty_role === 'assistant' ? 'I understand.' : 'Please continue.',
+							'content' => array(
+								array(
+									'type' => 'text',
+									'text' => $empty_role === 'assistant' ? 'I understand.' : 'Please continue.'
+								)
+							)
 						);
 					}
 					
-					$formatted_messages[] = array(
-						'role' => $message['role'],
-						'content' => $message['content'],
-					);
+					$formatted_messages[] = $message;
 					
 					$last_role = $message['role'];
 				}
@@ -217,7 +264,12 @@ class AI_Chat_Bedrock_AWS {
 			if ( !empty( $formatted_messages ) && $formatted_messages[0]['role'] !== 'user' ) {
 				array_unshift( $formatted_messages, array(
 					'role' => 'user',
-					'content' => 'Hello',
+					'content' => array(
+						array(
+							'type' => 'text',
+							'text' => 'Hello'
+						)
+					)
 				) );
 			}
 			

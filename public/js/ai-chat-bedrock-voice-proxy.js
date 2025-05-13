@@ -56,6 +56,7 @@ jQuery(document).ready(function($) {
         // 设置回调
         novaSonicClient
             .on('message', handleMessage)
+            .on('removeMessage', handleRemoveMessage)
             .on('audio', handleAudio)
             .on('status', handleStatus)
             .on('error', handleError);
@@ -76,9 +77,26 @@ jQuery(document).ready(function($) {
     
     // 处理文本消息
     function handleMessage(data) {
-        console.log("Received message:", data);
-        if (data.type === 'text' && data.content) {
-            // 添加助手消息到聊天界面
+        console.log("NOVA SONIC SUCCESS: Received text response", data);
+        
+        // 如果是处理中消息
+        if (data.isProcessing) {
+            // 添加处理中消息，使用特殊标记以便后续可以移除
+            const $message = aiChatBedrock.addMessage({
+                role: 'assistant',
+                content: data.content,
+                isProcessing: true
+            });
+            
+            // 存储处理中消息的DOM元素，以便后续可以移除
+            if ($message) {
+                $message.attr('data-processing', 'true');
+            }
+        } else {
+            // 移除所有处理中消息
+            $('.ai-chat-bedrock-message[data-processing="true"]').remove();
+            
+            // 添加实际响应消息
             aiChatBedrock.addMessage({
                 role: 'assistant',
                 content: data.content
@@ -86,15 +104,25 @@ jQuery(document).ready(function($) {
         }
     }
     
+    // 处理移除消息
+    function handleRemoveMessage(data) {
+        // 移除处理中消息
+        $('.ai-chat-bedrock-message[data-processing="true"]').remove();
+    }
+    
     // 处理音频数据
     function handleAudio(data) {
         // 这里可以处理音频播放，但目前我们依赖Nova Sonic客户端内部的音频播放功能
-        console.log('Audio received:', data.type);
+        console.log('NOVA SONIC SUCCESS: Received audio response');
     }
     
     // 处理状态更新
     function handleStatus(data) {
-        console.log('Status update:', data.status, data.message);
+        // 只记录重要状态变化
+        if (data.status === 'recording' || data.status === 'processing' || 
+            data.status === 'connected' || data.status === 'voice_changed') {
+            console.log('NOVA SONIC STATUS:', data.status, data.message || '');
+        }
         
         switch (data.status) {
             case 'recording':

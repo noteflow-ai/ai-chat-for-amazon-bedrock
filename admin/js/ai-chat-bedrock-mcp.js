@@ -61,10 +61,14 @@
             
             console.log('Toggle MCP settings:', isEnabled);
             
-            // Save the setting
+            // 添加调试信息
+            console.log('Using nonce:', ai_chat_bedrock_admin.nonce);
+            
+            // 保存设置
             $.ajax({
                 url: ajaxurl,
                 type: 'POST',
+                dataType: 'json',
                 data: {
                     action: 'ai_chat_bedrock_save_option',
                     nonce: ai_chat_bedrock_admin.nonce,
@@ -72,6 +76,7 @@
                     option_value: isEnabled ? '1' : '0'
                 },
                 success: function(response) {
+                    console.log('AJAX success response:', response);
                     if (response.success) {
                         AIChatBedrockAdmin.showNotice(ai_chat_bedrock_admin.i18n.settings_saved, 'success');
                     } else {
@@ -80,6 +85,7 @@
                 },
                 error: function(xhr, status, error) {
                     console.error('AJAX error:', status, error);
+                    console.error('Response text:', xhr.responseText);
                     AIChatBedrockAdmin.showNotice(ai_chat_bedrock_admin.i18n.ajax_error, 'error');
                 }
             });
@@ -94,6 +100,7 @@
             $.ajax({
                 url: ajaxurl,
                 type: 'GET',
+                dataType: 'json',
                 data: {
                     action: 'ai_chat_bedrock_get_mcp_servers',
                     nonce: ai_chat_bedrock_admin.mcp_nonce
@@ -101,18 +108,41 @@
                 success: function(response) {
                     console.log('MCP servers response:', response);
                     
-                    if (response.success && response.data.servers) {
-                        AIChatBedrockMCP.renderServers(response.data.servers);
-                    } else {
-                        console.error('Failed to load MCP servers:', response);
-                        // Don't show error notice for empty servers
-                        if (response.data && response.data.message) {
-                            AIChatBedrockAdmin.showNotice(response.data.message, 'error');
+                    if (response && response.success) {
+                        // Check what data structure we're getting
+                        console.log('Response data structure:', typeof response.data);
+                        
+                        let serversData = {};
+                        
+                        // Handle different possible data structures
+                        if (response.data && response.data.servers) {
+                            // If data.servers exists, use it
+                            serversData = response.data.servers;
+                        } else if (Array.isArray(response.data)) {
+                            // If data is an array, convert to object
+                            console.log('Converting array to object');
+                            response.data.forEach(function(server, index) {
+                                serversData['server_' + index] = server;
+                            });
+                        } else if (typeof response.data === 'object') {
+                            // If data is already an object, use it directly
+                            serversData = response.data;
                         }
+                        
+                        console.log('Processed servers data:', serversData);
+                        AIChatBedrockMCP.renderServers(serversData);
+                    } else {
+                        const errorMsg = response && response.data && response.data.message ? 
+                            response.data.message : ai_chat_bedrock_admin.i18n.ajax_error;
+                        AIChatBedrockAdmin.showNotice(errorMsg, 'error');
                     }
                 },
                 error: function(xhr, status, error) {
-                    console.error('AJAX error loading servers:', status, error);
+                    console.error('AJAX error details:', {
+                        status: status,
+                        error: error,
+                        responseText: xhr.responseText
+                    });
                     AIChatBedrockAdmin.showNotice(ai_chat_bedrock_admin.i18n.ajax_error, 'error');
                 }
             });
@@ -120,105 +150,144 @@
 
         /**
          * Render MCP servers table.
-         *
+         * 
          * @param {Object} servers The servers data.
          */
         renderServers: function(servers) {
             console.log('Rendering MCP servers:', servers);
             
-            const $tbody = $('#ai-chat-bedrock-mcp-servers-table tbody');
-            $tbody.empty();
+            const $table = $('#ai-chat-bedrock-mcp-servers-table tbody');
+            $table.empty();
             
             if (!servers || Object.keys(servers).length === 0) {
-                $tbody.html('<tr class="no-items"><td colspan="5">No MCP servers registered yet.</td></tr>');
+                $table.append('<tr><td colspan="5">' + ai_chat_bedrock_admin.i18n.no_servers + '</td></tr>');
                 return;
             }
             
-            // Create rows directly without using a template
-            $.each(servers, function(name, server) {
-                const statusClass = server.available ? 'status-available' : 'status-unavailable';
-                const statusText = server.available ? 'Available' : 'Unavailable';
+            // Get the template and check if it exists
+            let template = $('#ai-chat-bedrock-mcp-server-row-template').html();
+            
+            // If template is not found, create a default one
+            if (!template) {
+                console.warn('Server row template not found, using default template');
+                template = `
+                    <tr data-server-name="{{server_name}}">
+                        <td>{{server_name}}</td>
+                        <td>{{server_url}}</td>
+                        <td>
+                            <span class="ai-chat-bedrock-server-status {{status_class}}">
+                                {{status_text}}
+                            </span>
+                        </td>
+                        <td>
+                            <button type="button" class="button ai-chat-bedrock-view-tools" data-server="{{server_name}}">
+                                View Tools
+                            </button>
+                            <button type="button" class="button ai-chat-bedrock-refresh-tools" data-server="{{server_name}}">
+                                Refresh
+                            </button>
+                        </td>
+                        <td>
+                            <button type="button" class="button ai-chat-bedrock-remove-server" data-server="{{server_name}}">
+                                Remove
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }
+            
+            for (const serverName in servers) {
+                const server = servers[serverName];
+                if (!server || typeof server !== 'object') {
+                    console.error('Invalid server data for:', serverName);
+                    continue;
+                }
                 
-                const $row = $('<tr>').attr('data-server-name', name);
-                $row.append($('<td>').text(name));
-                $row.append($('<td>').text(server.url));
-                $row.append($('<td>').append(
-                    $('<span>').addClass('ai-chat-bedrock-server-status ' + statusClass).text(statusText)
-                ));
+                const status = server.status || 'unknown';
+                const statusClass = status === 'available' ? 'available' : 'unavailable';
+                const statusText = status === 'available' ? ai_chat_bedrock_admin.i18n.available : ai_chat_bedrock_admin.i18n.unavailable;
                 
-                const $toolsCell = $('<td>');
-                $toolsCell.append(
-                    $('<button>').attr({
-                        'type': 'button',
-                        'class': 'button ai-chat-bedrock-view-tools',
-                        'data-server': name
-                    }).text('View Tools')
-                );
-                $toolsCell.append(' ');
-                $toolsCell.append(
-                    $('<button>').attr({
-                        'type': 'button',
-                        'class': 'button ai-chat-bedrock-refresh-tools',
-                        'data-server': name
-                    }).text('Refresh')
-                );
-                $row.append($toolsCell);
-                
-                $row.append($('<td>').append(
-                    $('<button>').attr({
-                        'type': 'button',
-                        'class': 'button ai-chat-bedrock-remove-server',
-                        'data-server': name
-                    }).text('Remove')
-                ));
-                
-                $tbody.append($row);
-            });
+                try {
+                    let html = template
+                        .replace(/{{server_name}}/g, serverName)
+                        .replace(/{{server_url}}/g, server.url || '')
+                        .replace(/{{status_class}}/g, statusClass)
+                        .replace(/{{status_text}}/g, statusText);
+                    
+                    $table.append(html);
+                } catch (error) {
+                    console.error('Error rendering server row:', error);
+                }
+            }
         },
 
         /**
          * Add a new MCP server.
          */
         addServer: function() {
-            const serverName = $('#ai_chat_bedrock_mcp_server_name').val().trim();
-            const serverUrl = $('#ai_chat_bedrock_mcp_server_url').val().trim();
+            console.log('Add server button clicked');
             
-            console.log('Adding MCP server:', serverName, serverUrl);
+            // Try different possible field IDs
+            const $serverName = $('#ai_chat_bedrock_server_name, #ai_chat_bedrock_mcp_server_name');
+            const $serverUrl = $('#ai_chat_bedrock_server_url, #ai_chat_bedrock_mcp_server_url');
+            
+            console.log('Server name field found:', $serverName.length > 0);
+            console.log('Server URL field found:', $serverUrl.length > 0);
+            
+            // Check if elements exist
+            if (!$serverName.length || !$serverUrl.length) {
+                console.error('Server name or URL input fields not found');
+                console.log('Available form fields:', $('input[type="text"], input[type="url"]').map(function() {
+                    return this.id;
+                }).get());
+                AIChatBedrockAdmin.showNotice('Form fields not found', 'error');
+                return;
+            }
+            
+            const serverName = $serverName.val() ? $serverName.val().trim() : '';
+            const serverUrl = $serverUrl.val() ? $serverUrl.val().trim() : '';
             
             if (!serverName || !serverUrl) {
                 AIChatBedrockAdmin.showNotice(ai_chat_bedrock_admin.i18n.missing_fields, 'error');
                 return;
             }
             
+            $('#ai_chat_bedrock_add_mcp_server').prop('disabled', true).text(ai_chat_bedrock_admin.i18n.adding);
+            
             $.ajax({
                 url: ajaxurl,
                 type: 'POST',
+                dataType: 'json',
                 data: {
                     action: 'ai_chat_bedrock_register_mcp_server',
                     nonce: ai_chat_bedrock_admin.mcp_nonce,
                     server_name: serverName,
                     server_url: serverUrl
                 },
-                beforeSend: function() {
-                    $('#ai_chat_bedrock_add_mcp_server').prop('disabled', true).text(ai_chat_bedrock_admin.i18n.adding);
-                },
                 success: function(response) {
                     $('#ai_chat_bedrock_add_mcp_server').prop('disabled', false).text(ai_chat_bedrock_admin.i18n.add_server);
                     
-                    console.log('Add server response:', response);
-                    
                     if (response.success) {
-                        $('#ai_chat_bedrock_mcp_server_name').val('');
-                        $('#ai_chat_bedrock_mcp_server_url').val('');
+                        // Clear form fields
+                        $serverName.val('');
+                        $serverUrl.val('');
+                        
+                        // Show success message
                         AIChatBedrockAdmin.showNotice(response.data.message, 'success');
+                        
+                        // Reload servers
                         AIChatBedrockMCP.loadServers();
                     } else {
                         AIChatBedrockAdmin.showNotice(response.data.message, 'error');
                     }
                 },
                 error: function(xhr, status, error) {
-                    console.error('AJAX error adding server:', status, error);
                     $('#ai_chat_bedrock_add_mcp_server').prop('disabled', false).text(ai_chat_bedrock_admin.i18n.add_server);
+                    console.error('AJAX error details:', {
+                        status: status,
+                        error: error,
+                        responseText: xhr.responseText
+                    });
                     AIChatBedrockAdmin.showNotice(ai_chat_bedrock_admin.i18n.ajax_error, 'error');
                 }
             });
@@ -229,13 +298,12 @@
          */
         removeServer: function() {
             const serverName = $(this).data('server');
-            const $button = $(this);
-            
-            console.log('Removing MCP server:', serverName);
             
             if (!confirm(ai_chat_bedrock_admin.i18n.confirm_remove_server)) {
                 return;
             }
+            
+            $(this).prop('disabled', true).text(ai_chat_bedrock_admin.i18n.removing);
             
             $.ajax({
                 url: ajaxurl,
@@ -245,171 +313,184 @@
                     nonce: ai_chat_bedrock_admin.mcp_nonce,
                     server_name: serverName
                 },
-                beforeSend: function() {
-                    $button.prop('disabled', true).text(ai_chat_bedrock_admin.i18n.removing);
-                },
                 success: function(response) {
-                    console.log('Remove server response:', response);
-                    
                     if (response.success) {
+                        // Show success message
                         AIChatBedrockAdmin.showNotice(response.data.message, 'success');
+                        
+                        // Reload servers
                         AIChatBedrockMCP.loadServers();
                     } else {
                         AIChatBedrockAdmin.showNotice(response.data.message, 'error');
                     }
                 },
                 error: function(xhr, status, error) {
-                    console.error('AJAX error removing server:', status, error);
+                    console.error('AJAX error:', error);
                     AIChatBedrockAdmin.showNotice(ai_chat_bedrock_admin.i18n.ajax_error, 'error');
-                },
-                complete: function() {
-                    $button.prop('disabled', false).text(ai_chat_bedrock_admin.i18n.remove);
                 }
             });
         },
 
         /**
-         * View MCP server tools.
+         * View tools for an MCP server.
          */
         viewTools: function() {
             const serverName = $(this).data('server');
             
+            $(this).prop('disabled', true).text(ai_chat_bedrock_admin.i18n.loading_tools);
+            
             console.log('Viewing tools for server:', serverName);
+            console.log('Using MCP nonce:', ai_chat_bedrock_admin.mcp_nonce);
             
-            // Show modal
-            $('#ai-chat-bedrock-mcp-tools-modal').show();
-            $('#ai-chat-bedrock-mcp-tools-list').html('<p>' + ai_chat_bedrock_admin.i18n.loading_tools + '</p>');
-            
-            // Load tools
             $.ajax({
                 url: ajaxurl,
                 type: 'GET',
-                data: {
-                    action: 'ai_chat_bedrock_get_mcp_servers',
-                    nonce: ai_chat_bedrock_admin.mcp_nonce
-                },
-                success: function(response) {
-                    console.log('Get servers for tools response:', response);
-                    
-                    if (response.success && response.data.servers && response.data.servers[serverName]) {
-                        const server = response.data.servers[serverName];
-                        AIChatBedrockMCP.renderTools(server.tools || []);
-                    } else {
-                        $('#ai-chat-bedrock-mcp-tools-list').html('<p>' + ai_chat_bedrock_admin.i18n.no_tools + '</p>');
-                    }
-                },
-                error: function(xhr, status, error) {
-                    console.error('AJAX error getting tools:', status, error);
-                    $('#ai-chat-bedrock-mcp-tools-list').html('<p>' + ai_chat_bedrock_admin.i18n.ajax_error + '</p>');
-                }
-            });
-        },
-
-        /**
-         * Refresh MCP server tools.
-         */
-        refreshTools: function() {
-            const serverName = $(this).data('server');
-            const $button = $(this);
-            
-            console.log('Refreshing tools for server:', serverName);
-            
-            $button.prop('disabled', true).text(ai_chat_bedrock_admin.i18n.refreshing);
-            
-            $.ajax({
-                url: ajaxurl,
-                type: 'POST',
+                dataType: 'json',
                 data: {
                     action: 'ai_chat_bedrock_discover_mcp_tools',
                     nonce: ai_chat_bedrock_admin.mcp_nonce,
                     server_name: serverName
                 },
                 success: function(response) {
-                    console.log('Refresh tools response:', response);
-                    
-                    $button.prop('disabled', false).text(ai_chat_bedrock_admin.i18n.refresh);
+                    $(this).prop('disabled', false).text(ai_chat_bedrock_admin.i18n.view_tools);
+                    console.log('View tools response:', response);
                     
                     if (response.success) {
-                        AIChatBedrockAdmin.showNotice(response.data.message, 'success');
+                        AIChatBedrockMCP.renderTools(serverName, response.data);
+                    } else {
+                        AIChatBedrockAdmin.showNotice(response.data.message, 'error');
+                    }
+                }.bind(this),
+                error: function(xhr, status, error) {
+                    $(this).prop('disabled', false).text(ai_chat_bedrock_admin.i18n.view_tools);
+                    console.error('AJAX error details:', {
+                        status: status,
+                        error: error,
+                        responseText: xhr.responseText
+                    });
+                    AIChatBedrockAdmin.showNotice(ai_chat_bedrock_admin.i18n.ajax_error, 'error');
+                }.bind(this)
+            });
+        },
+
+        /**
+         * Refresh tools for an MCP server.
+         */
+        refreshTools: function() {
+            const serverName = $(this).data('server');
+            
+            console.log('Refreshing tools for server:', serverName);
+            console.log('Using MCP nonce:', ai_chat_bedrock_admin.mcp_nonce);
+            
+            $(this).prop('disabled', true).text(ai_chat_bedrock_admin.i18n.refreshing);
+            
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    action: 'ai_chat_bedrock_discover_mcp_tools',
+                    nonce: ai_chat_bedrock_admin.mcp_nonce,
+                    server_name: serverName,
+                    refresh: true
+                },
+                success: function(response) {
+                    console.log('Refresh tools response:', response);
+                    
+                    $(this).prop('disabled', false).text(ai_chat_bedrock_admin.i18n.refresh);
+                    
+                    if (response.success) {
+                        // Reload servers to update status
                         AIChatBedrockMCP.loadServers();
                     } else {
                         AIChatBedrockAdmin.showNotice(response.data.message, 'error');
                     }
-                },
+                }.bind(this),
                 error: function(xhr, status, error) {
-                    console.error('AJAX error refreshing tools:', status, error);
-                    $button.prop('disabled', false).text(ai_chat_bedrock_admin.i18n.refresh);
+                    $(this).prop('disabled', false).text(ai_chat_bedrock_admin.i18n.refresh);
+                    console.error('AJAX error details:', {
+                        status: status,
+                        error: error,
+                        responseText: xhr.responseText
+                    });
                     AIChatBedrockAdmin.showNotice(ai_chat_bedrock_admin.i18n.ajax_error, 'error');
-                }
+                }.bind(this)
             });
         },
 
         /**
-         * Render MCP tools in modal.
-         *
-         * @param {Array} tools The tools data.
+         * Render tools for an MCP server.
+         * 
+         * @param {string} serverName The server name.
+         * @param {Object} data The tools data.
          */
-        renderTools: function(tools) {
-            console.log('Rendering tools:', tools);
+        renderTools: function(serverName, data) {
+            const $modal = $('#ai-chat-bedrock-mcp-tools-modal');
+            const $content = $modal.find('.ai-chat-bedrock-modal-content');
             
-            const $container = $('#ai-chat-bedrock-mcp-tools-list');
-            $container.empty();
+            // Set modal title
+            $modal.find('.ai-chat-bedrock-modal-title').text(ai_chat_bedrock_admin.i18n.tools_for + ' ' + serverName);
             
-            if (!tools || tools.length === 0) {
-                $container.html('<p>No tools found for this server.</p>');
+            // Clear content
+            $content.empty();
+            
+            // Check if tools exist
+            if (!data.tools || data.tools.length === 0) {
+                $content.append('<p>' + ai_chat_bedrock_admin.i18n.no_tools + '</p>');
+                $modal.show();
                 return;
             }
             
-            tools.forEach(function(tool) {
-                const $toolItem = $('<div>').addClass('ai-chat-bedrock-mcp-tool-item');
-                $toolItem.append($('<h4>').text(tool.name || 'Unnamed Tool'));
-                $toolItem.append($('<p>').addClass('description').text(tool.description || 'No description available'));
+            // Render tools
+            const template = $('#ai-chat-bedrock-mcp-tool-item-template').html();
+            
+            for (const tool of data.tools) {
+                let html = template
+                    .replace(/{{name}}/g, tool.name)
+                    .replace(/{{description}}/g, tool.description);
                 
-                const $parametersSection = $('<div>').addClass('ai-chat-bedrock-mcp-tool-parameters');
-                $parametersSection.append($('<h5>').text('Parameters'));
+                const $tool = $(html);
+                const $params = $tool.find('.ai-chat-bedrock-mcp-tool-parameters');
                 
-                const $parametersList = $('<ul>');
-                
-                if (tool.parameters && tool.parameters.properties) {
-                    const properties = tool.parameters.properties;
+                // Add parameters
+                if (tool.parameters && tool.parameters.properties && Object.keys(tool.parameters.properties).length > 0) {
+                    const $paramsList = $('<ul class="ai-chat-bedrock-mcp-tool-parameters-list"></ul>');
                     
-                    for (const key in properties) {
-                        if (properties.hasOwnProperty(key)) {
-                            const param = properties[key];
-                            const $paramItem = $('<li>');
-                            const $paramName = $('<strong>').text(key);
-                            $paramItem.append($paramName);
-                            $paramItem.append(': ' + (param.description || ''));
-                            
-                            if (param.required) {
-                                $paramItem.append(' ');
-                                $paramItem.append($('<span>').addClass('required').text('*'));
-                            }
-                            
-                            $parametersList.append($paramItem);
-                        }
+                    for (const paramName in tool.parameters.properties) {
+                        const param = tool.parameters.properties[paramName];
+                        const required = tool.parameters.required && tool.parameters.required.includes(paramName);
+                        
+                        $paramsList.append(
+                            '<li>' +
+                            '<strong>' + paramName + '</strong>' +
+                            (required ? ' <span class="required">*</span>' : '') +
+                            ': ' + param.description +
+                            ' (' + param.type + ')' +
+                            '</li>'
+                        );
                     }
+                    
+                    $params.append($paramsList);
+                } else {
+                    $params.append('<p>' + ai_chat_bedrock_admin.i18n.no_parameters + '</p>');
                 }
                 
-                if ($parametersList.children().length === 0) {
-                    $parametersList.append($('<li>').text('No parameters required'));
-                }
-                
-                $parametersSection.append($parametersList);
-                $toolItem.append($parametersSection);
-                
-                $container.append($toolItem);
-            });
+                $content.append($tool);
+            }
+            
+            // Show modal
+            $modal.show();
         },
 
         /**
-         * Close the modal.
+         * Close modal.
          */
         closeModal: function() {
             $('.ai-chat-bedrock-modal').hide();
         }
     };
 
+    // Initialize on document ready
     $(document).ready(function() {
         console.log('Document ready, initializing MCP');
         AIChatBedrockMCP.init();
