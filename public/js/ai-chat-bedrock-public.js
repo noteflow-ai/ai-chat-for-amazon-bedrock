@@ -15,7 +15,7 @@
 		const $messagesContainer = $('.ai-chat-bedrock-messages');
 		const $form = $('.ai-chat-bedrock-form');
 		const $textarea = $('.ai-chat-bedrock-textarea');
-		const $submitButton = $('.ai-chat-bedrock-submit');
+		const $submitButton = $('.ai-chat-bedrock-send-button');
 		const $clearButton = $('.ai-chat-bedrock-clear');
 		
 		// Check if elements exist

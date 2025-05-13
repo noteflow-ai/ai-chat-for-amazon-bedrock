@@ -273,14 +273,14 @@ class AI_Chat_Bedrock_Nova_Sonic {
             ]
         ];
         
-        // 构建完整的事件序列
+        // 构建完整的事件序列 - 确保顺序与Python示例一致
         $events = [
-            $session_start_event,
-            $prompt_start_event,
-            $system_content_start,
-            $system_text_input,
-            $system_content_end,
-            $user_content_start
+            $session_start_event,        // 1. 会话开始
+            $prompt_start_event,         // 2. 提示开始
+            $system_content_start,       // 3. 系统内容开始
+            $system_text_input,          // 4. 系统文本输入
+            $system_content_end,         // 5. 系统内容结束
+            $user_content_start          // 6. 用户内容开始
         ];
         
         // 添加所有音频块
@@ -288,10 +288,10 @@ class AI_Chat_Bedrock_Nova_Sonic {
         
         // 添加结束事件
         $events = array_merge($events, [
-            $user_content_end,
-            $prompt_end_event,
-            $session_end_event
-        ]);
+            $user_content_end,           // 7. 用户内容结束
+            $prompt_end_event,           // 8. 提示结束
+            $session_end_event           // 9. 会话结束
+        ]);;
         
         // 返回所有事件
         return [
@@ -562,214 +562,251 @@ class AI_Chat_Bedrock_Nova_Sonic {
      * @return array 响应数据
      */
     public function invoke_model_with_bidirectional_stream($events, $callback = null) {
-        // 设置 AWS 凭证和请求参数
-        $service = 'bedrock';
-        $region = $this->region;
-        $model_id = 'amazon.nova-sonic-v1:0';
+        // 设置重试参数
+        $max_retries = 3;
+        $retry_count = 0;
+        $retry_delay = 1; // 初始延迟1秒
         
-        // 构建请求 URL (使用WebSocket)
-        $endpoint = "wss://bedrock-runtime.{$region}.amazonaws.com/model/{$model_id}/invoke-with-bidirectional-stream";
-        
-        $this->log_debug('Creating WebSocket connection to:', $endpoint);
-        
-        // 解析URL，分离主机名和路径
-        $parsed_url = parse_url($endpoint);
-        $host = $parsed_url['host'];
-        $path = $parsed_url['path'];
-        $port = isset($parsed_url['port']) ? $parsed_url['port'] : 443; // 默认HTTPS端口
-        
-        // 设置 AWS 签名
-        $datetime = new DateTime('UTC');
-        $amz_date = $datetime->format('Ymd\THis\Z');
-        $date_stamp = $datetime->format('Ymd');
-        
-        // 获取规范URI
-        $canonical_uri = $this->get_canonical_uri($path);
-        
-        // 创建签名
-        $algorithm = 'AWS4-HMAC-SHA256';
-        $credential_scope = "{$date_stamp}/{$region}/{$service}/aws4_request";
-        
-        // 设置请求头和签名
-        $canonical_headers = "content-type:application/json\nhost:{$host}\nx-amz-date:{$amz_date}\n";
-        $signed_headers = 'content-type;host;x-amz-date';
-        
-        // 使用空字符串的哈希值
-        $payload_hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
-        
-        $canonical_request = "GET\n{$canonical_uri}\n\n{$canonical_headers}\n{$signed_headers}\n{$payload_hash}";
-        $string_to_sign = "{$algorithm}\n{$amz_date}\n{$credential_scope}\n" . hash('sha256', $canonical_request);
-        
-        // 计算签名密钥
-        $k_date = hash_hmac('sha256', $date_stamp, 'AWS4' . $this->secret_key, true);
-        $k_region = hash_hmac('sha256', $region, $k_date, true);
-        $k_service = hash_hmac('sha256', $service, $k_region, true);
-        $k_signing = hash_hmac('sha256', 'aws4_request', $k_service, true);
-        
-        // 计算签名
-        $signature = hash_hmac('sha256', $string_to_sign, $k_signing);
-        
-        // 创建授权头
-        $authorization_header = "{$algorithm} " . "Credential={$this->access_key}/{$credential_scope}, " . "SignedHeaders={$signed_headers}, " . "Signature={$signature}";
-        
-        // 记录调试信息
-        if ($this->debug) {
-            $this->log_debug('Canonical Request:', $canonical_request);
-            $this->log_debug('String to Sign:', $string_to_sign);
-            $this->log_debug('Authorization Header:', $authorization_header);
-        }
-        
-        $responses = [];
-        $response_buffer = '';
-        
-        // 检查是否有WebSocket扩展
-        if (!function_exists('stream_socket_client')) {
-            $this->log_debug('Error:', 'stream_socket_client function not available');
-            return [
-                'success' => false,
-                'error' => 'WebSocket support not available in this PHP installation',
-                'responses' => []
-            ];
-        }
-        
-        try {
-            // 优化：将事件分组处理
-            $event_groups = $this->optimize_events($events);
-            
-            // 使用PHP的stream_socket_client函数创建WebSocket连接
-            $context = stream_context_create([
-                'ssl' => [
-                    'verify_peer' => true,
-                    'verify_peer_name' => true,
-                ]
-            ]);
-        
-        // 将wss转换为ssl
-        $protocol = ($parsed_url['scheme'] === 'wss') ? 'ssl' : 'tcp';
-        $server = "$protocol://$host:$port";
-        
-        // 创建连接
-        $socket = stream_socket_client(
-            $server,
-            $errno,
-            $errstr,
-            30,
-            STREAM_CLIENT_CONNECT,
-            $context
-        );
-            
-            if (!$socket) {
-                $this->log_debug('Socket Error:', "$errno: $errstr");
-                return [
-                    'success' => false,
-                    'error' => "Failed to connect to WebSocket: $errstr ($errno)",
-                    'responses' => []
-                ];
-            }
-            
-            // 设置非阻塞模式
-            stream_set_blocking($socket, false);
-            
-            // 构建WebSocket握手请求
-            $headers = [
-                "GET " . $path . " HTTP/1.1",
-                "Host: " . $host,
-                "Upgrade: websocket",
-                "Connection: Upgrade",
-                "Sec-WebSocket-Key: " . base64_encode(openssl_random_pseudo_bytes(16)),
-                "Sec-WebSocket-Version: 13",
-                "Content-Type: application/json",
-                "X-Amz-Date: " . $amz_date,
-                "X-Amz-Content-Sha256: " . $payload_hash,
-                "Authorization: " . $authorization_header,
-                "", ""
-            ];
-            
-            // 发送握手请求
-            fwrite($socket, implode("\r\n", $headers));
-            
-            // 等待握手响应
-            $response = '';
-            $start_time = time();
-            while (time() - $start_time < 10) { // 10秒超时
-                $buffer = fread($socket, 8192);
-                if ($buffer !== false) {
-                    $response .= $buffer;
-                    if (strpos($response, "\r\n\r\n") !== false) {
-                        break;
-                    }
+        while ($retry_count <= $max_retries) {
+            try {
+                // 如果是重试，记录重试信息
+                if ($retry_count > 0) {
+                    $this->log_debug('Retry attempt:', $retry_count . ' of ' . $max_retries);
                 }
-                usleep(100000); // 等待0.1秒
-            }
+                
+                // 设置 AWS 凭证和请求参数
+                $service = 'bedrock-runtime'; // 修改: 从'bedrock'改为'bedrock-runtime'
+                $region = $this->region;
+                $model_id = 'amazon.nova-sonic-v1:0';
+                
+                // 构建请求 URL (使用WebSocket)，添加protocol-version查询参数
+                $endpoint = "wss://bedrock-runtime.{$region}.amazonaws.com/model/{$model_id}/invoke-with-bidirectional-stream?protocol-version=1.0";
+                
+                $this->log_debug('Creating WebSocket connection to:', $endpoint);
+                
+                // 解析URL，分离主机名和路径
+                $parsed_url = parse_url($endpoint);
+                $host = $parsed_url['host'];
+                $path = $parsed_url['path'];
+                if (isset($parsed_url['query'])) {
+                    $path .= '?' . $parsed_url['query']; // 确保查询参数包含在路径中
+                }
+                $port = isset($parsed_url['port']) ? $parsed_url['port'] : 443; // 默认HTTPS端口
+                
+                // 设置 AWS 签名
+                $datetime = new DateTime('UTC');
+                $amz_date = $datetime->format('Ymd\THis\Z');
+                $date_stamp = $datetime->format('Ymd');
+                
+                // 获取规范URI
+                $canonical_uri = $this->get_canonical_uri($path);
+                
+                // 创建签名
+                $algorithm = 'AWS4-HMAC-SHA256';
+                $credential_scope = "{$date_stamp}/{$region}/{$service}/aws4_request";
+                
+                // 使用空字符串的哈希值
+                $payload_hash = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+                
+                // 设置请求头和签名 (添加x-amz-content-sha256头部)
+                $canonical_headers = "content-type:application/json\nhost:{$host}\nx-amz-content-sha256:{$payload_hash}\nx-amz-date:{$amz_date}\n";
+                $signed_headers = 'content-type;host;x-amz-content-sha256;x-amz-date';
+        
+                $canonical_request = "GET\n{$canonical_uri}\n\n{$canonical_headers}\n{$signed_headers}\n{$payload_hash}";
+                $string_to_sign = "{$algorithm}\n{$amz_date}\n{$credential_scope}\n" . hash('sha256', $canonical_request);
+                
+                // 计算签名密钥
+                $k_date = hash_hmac('sha256', $date_stamp, 'AWS4' . $this->secret_key, true);
+                $k_region = hash_hmac('sha256', $region, $k_date, true);
+                $k_service = hash_hmac('sha256', $service, $k_region, true);
+                $k_signing = hash_hmac('sha256', 'aws4_request', $k_service, true);
+                
+                // 计算签名
+                $signature = hash_hmac('sha256', $string_to_sign, $k_signing);
+                
+                // 创建授权头
+                $authorization_header = "{$algorithm} " . "Credential={$this->access_key}/{$credential_scope}, " . "SignedHeaders={$signed_headers}, " . "Signature={$signature}";
+        
+                // 记录调试信息
+                if ($this->debug) {
+                    $this->log_debug('Canonical Request:', $canonical_request);
+                    $this->log_debug('String to Sign:', $string_to_sign);
+                    $this->log_debug('Authorization Header:', $authorization_header);
+                }
+                
+                $responses = [];
+                $response_buffer = '';
+                
+                // 检查是否有WebSocket扩展
+                if (!function_exists('stream_socket_client')) {
+                    $this->log_debug('Error:', 'stream_socket_client function not available');
+                    return [
+                        'success' => false,
+                        'error' => 'WebSocket support not available in this PHP installation',
+                        'responses' => []
+                    ];
+                }
+        
+                // 优化：将事件分组处理
+                $event_groups = $this->optimize_events($events);
+                
+                // 使用PHP的stream_socket_client函数创建WebSocket连接
+                $context = stream_context_create([
+                    'ssl' => [
+                        'verify_peer' => true,
+                        'verify_peer_name' => true,
+                    ]
+                ]);
             
-            // 检查握手是否成功
-            if (strpos($response, "HTTP/1.1 101") === false) {
-                $this->log_debug('WebSocket Handshake Failed:', $response);
-                fclose($socket);
-                return [
-                    'success' => false,
-                    'error' => "WebSocket handshake failed: " . $response,
-                    'responses' => []
+                // 将wss转换为ssl
+                $protocol = ($parsed_url['scheme'] === 'wss') ? 'ssl' : 'tcp';
+                $server = "$protocol://$host:$port";
+                
+                // 创建连接
+                $socket = stream_socket_client(
+                    $server,
+                    $errno,
+                    $errstr,
+                    30,
+                    STREAM_CLIENT_CONNECT,
+                    $context
+                );
+        
+                if (!$socket) {
+                    $this->log_debug('Socket Error:', "$errno: $errstr");
+                    return [
+                        'success' => false,
+                        'error' => "Failed to connect to WebSocket: $errstr ($errno)",
+                        'responses' => []
+                    ];
+                }
+        
+                // 设置非阻塞模式
+                stream_set_blocking($socket, false);
+                
+                // 构建WebSocket握手请求
+                $headers = [
+                    "GET " . $path . " HTTP/1.1",
+                    "Host: " . $host,
+                    "Upgrade: websocket",
+                    "Connection: Upgrade",
+                    "Sec-WebSocket-Key: " . base64_encode(openssl_random_pseudo_bytes(16)),
+                    "Sec-WebSocket-Version: 13",
+                    "Sec-WebSocket-Protocol: aws.bedrock.runtime.v1", // 添加WebSocket子协议
+                    "X-Amz-Date: " . $amz_date,
+                    "X-Amz-Content-Sha256: " . $payload_hash,
+                    "Authorization: " . $authorization_header,
+                    "", ""
                 ];
-            }
-            
-            $this->log_debug('WebSocket Handshake Successful', '');
-            
-            // 发送事件
-            foreach ($event_groups as $group_index => $event_group) {
-                $request_body = json_encode($event_group);
+        
+                // 发送握手请求
+                fwrite($socket, implode("\r\n", $headers));
                 
-                // 记录请求体
-                $this->log_debug('Sending event group ' . $group_index . ':', substr($request_body, 0, 200) . '...');
-                
-                // 发送WebSocket帧
-                $this->send_websocket_frame($socket, $request_body);
-                
-                // 接收响应
+                // 等待握手响应
+                $response = '';
                 $start_time = time();
-                $timeout = 30; // 30秒超时
-                
-                while (time() - $start_time < $timeout) {
+                while (time() - $start_time < 10) { // 10秒超时
                     $buffer = fread($socket, 8192);
-                    if ($buffer !== false && strlen($buffer) > 0) {
-                        // 处理WebSocket帧
-                        $frame_data = $this->parse_websocket_frame($buffer);
-                        if ($frame_data !== false) {
-                            $response_buffer .= $frame_data;
-                            
-                            // 尝试处理响应
-                            $this->process_response_buffer($response_buffer, $responses, $callback);
-                            
-                            // 如果是关闭帧，退出循环
-                            if (ord($buffer[0]) & 0x08) {
-                                break;
-                            }
+                    if ($buffer !== false) {
+                        $response .= $buffer;
+                        if (strpos($response, "\r\n\r\n") !== false) {
+                            break;
                         }
                     }
                     usleep(100000); // 等待0.1秒
                 }
                 
-                // 处理可能剩余在缓冲区中的数据
-                if (!empty($response_buffer)) {
-                    $this->process_response_buffer($response_buffer, $responses, $callback, true);
+                // 检查握手是否成功
+                if (strpos($response, "HTTP/1.1 101") === false) {
+                    $this->log_debug('WebSocket Handshake Failed:', $response);
+                    fclose($socket);
+                    
+                    // 检查是否需要重试
+                    if ($retry_count < $max_retries) {
+                        $retry_count++;
+                        $sleep_time = $retry_delay * pow(2, $retry_count - 1); // 指数退避
+                        $this->log_debug('Retrying in', $sleep_time . ' seconds');
+                        sleep($sleep_time);
+                        continue; // 继续下一次重试
+                    }
+                    
+                    return [
+                        'success' => false,
+                        'error' => "WebSocket handshake failed: " . $response,
+                        'responses' => []
+                    ];
                 }
                 
-                // 清空缓冲区，准备下一个请求
-                $response_buffer = '';
+                $this->log_debug('WebSocket Handshake Successful', '');
+                
+                // 发送事件
+                foreach ($event_groups as $group_index => $event_group) {
+                    $request_body = json_encode($event_group);
+                    
+                    // 记录请求体
+                    $this->log_debug('Sending event group ' . $group_index . ':', substr($request_body, 0, 200) . '...');
+                    
+                    // 发送WebSocket帧
+                    $this->send_websocket_frame($socket, $request_body);
+                    
+                    // 接收响应
+                    $start_time = time();
+                    $timeout = 30; // 30秒超时
+                    
+                    while (time() - $start_time < $timeout) {
+                        $buffer = fread($socket, 8192);
+                        if ($buffer !== false && strlen($buffer) > 0) {
+                            // 处理WebSocket帧
+                            $frame_data = $this->parse_websocket_frame($buffer);
+                            if ($frame_data !== false) {
+                                $response_buffer .= $frame_data;
+                                
+                                // 尝试处理响应
+                                $this->process_response_buffer($response_buffer, $responses, $callback);
+                                
+                                // 如果是关闭帧，退出循环
+                                if (ord($buffer[0]) & 0x08) {
+                                    break;
+                                }
+                            }
+                        }
+                        usleep(100000); // 等待0.1秒
+                    }
+                    
+                    // 处理可能剩余在缓冲区中的数据
+                    if (!empty($response_buffer)) {
+                        $this->process_response_buffer($response_buffer, $responses, $callback, true);
+                    }
+                    
+                    // 清空缓冲区，准备下一个请求
+                    $response_buffer = '';
+                }
+                
+                // 关闭WebSocket连接
+                $this->send_websocket_close($socket);
+                fclose($socket);
+            } catch (Exception $e) {
+                $this->log_debug('WebSocket Error:', $e->getMessage());
+                
+                // 检查是否需要重试
+                if ($retry_count < $max_retries) {
+                    $retry_count++;
+                    $sleep_time = $retry_delay * pow(2, $retry_count - 1); // 指数退避
+                    $this->log_debug('Retrying after error in', $sleep_time . ' seconds');
+                    sleep($sleep_time);
+                    continue; // 继续下一次重试
+                }
+                
+                return [
+                    'success' => false,
+                    'error' => "WebSocket error: " . $e->getMessage(),
+                    'responses' => $responses
+                ];
             }
-            
-            // 关闭WebSocket连接
-            $this->send_websocket_close($socket);
-            fclose($socket);
-            
-        } catch (Exception $e) {
-            $this->log_debug('WebSocket Error:', $e->getMessage());
-            return [
-                'success' => false,
-                'error' => "WebSocket error: " . $e->getMessage(),
-                'responses' => $responses
-            ];
-        }
+        
+        // 如果成功完成，跳出重试循环
+        break;
+        } // 结束重试循环
         
         return [
             'success' => true,
@@ -903,7 +940,7 @@ class AI_Chat_Bedrock_Nova_Sonic {
     
     /**
      * 优化事件，按照官方API参考格式组织事件
-     * 不再使用复合事件，直接返回原始事件序列
+     * 确保事件序列与Python示例中的顺序一致
      *
      * @param array $events 原始事件数组
      * @return array 优化后的事件数组
@@ -911,8 +948,32 @@ class AI_Chat_Bedrock_Nova_Sonic {
     private function optimize_events($events) {
         $this->log_debug('Optimizing events, original count:', count($events));
         
+        // 检查事件序列是否符合预期顺序
+        $expected_sequence = [
+            'sessionStart',
+            'promptStart',
+            'contentStart', // SYSTEM
+            'textInput',    // 系统提示
+            'contentEnd',   // 系统提示结束
+            'contentStart', // USER/AUDIO
+            // 音频输入事件
+            'contentEnd',   // 用户输入结束
+            'promptEnd',
+            'sessionEnd'
+        ];
+        
+        // 验证事件序列
+        $event_types = [];
+        foreach ($events as $event) {
+            if (isset($event['event'])) {
+                $event_type = array_keys($event['event'])[0];
+                $event_types[] = $event_type;
+            }
+        }
+        
+        $this->log_debug('Event sequence:', implode(', ', $event_types));
+        
         // 根据官方文档，不应该使用复合事件，而是按顺序发送单独的事件
-        // 直接返回原始事件，不进行合并
         $this->log_debug('Returning original events without merging', '');
         return $events;
     }
@@ -1683,7 +1744,9 @@ class AI_Chat_Bedrock_Nova_Sonic {
                 $data = print_r($data, true);
             }
             
-            error_log("AI Chat Bedrock Nova Sonic Debug - {$title} {$data}");
+            // 添加时间戳以便更好地跟踪事件顺序
+            $timestamp = date('Y-m-d H:i:s.') . substr(microtime(), 2, 3);
+            error_log("[{$timestamp}] AI Chat Bedrock Nova Sonic Debug - {$title} {$data}");
         }
     }
 

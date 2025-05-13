@@ -19,15 +19,7 @@ class AI_Chat_Bedrock_Voice_Interaction {
     /**
      * 加载语音交互所需的脚本和样式
      */
-    public function enqueue_voice_scripts() {
-        wp_enqueue_script(
-            'ai-chat-bedrock-voice',
-            AI_CHAT_BEDROCK_PLUGIN_URL . 'public/js/ai-chat-bedrock-voice.js',
-            array('jquery', 'ai-chat-bedrock-public'),
-            AI_CHAT_BEDROCK_VERSION,
-            true
-        );
-        
+    public function enqueue_voice_scripts() {     
         wp_enqueue_style(
             'ai-chat-bedrock-voice-css',
             AI_CHAT_BEDROCK_PLUGIN_URL . 'public/css/ai-chat-bedrock-voice.css',

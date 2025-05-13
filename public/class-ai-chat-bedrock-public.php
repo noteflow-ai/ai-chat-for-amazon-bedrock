@@ -84,26 +84,41 @@ class AI_Chat_Bedrock_Public {
 		
 		// 加载语音交互脚本和样式
 		if ($enable_voice) {
-			wp_enqueue_script( 'ai-chat-bedrock-voice', plugin_dir_url( __FILE__ ) . 'js/ai-chat-bedrock-voice.js', array( 'jquery', $this->plugin_name ), $this->version, true );
+			// 加载语音样式
 			wp_enqueue_style( 'ai-chat-bedrock-voice', plugin_dir_url( __FILE__ ) . 'css/ai-chat-bedrock-voice.css', array(), $this->version, 'all' );
+			
+			// 注册Nova Sonic代理客户端脚本（服务器代理方式）
+			wp_enqueue_script( $this->plugin_name . '-nova-sonic-proxy', plugin_dir_url( __FILE__ ) . 'js/nova-sonic-proxy-client.js', array( 'jquery' ), $this->version, true );
+			
+			// 注册语音交互脚本 - 只使用代理模式
+			wp_enqueue_script( 'ai-chat-bedrock-voice-proxy', plugin_dir_url( __FILE__ ) . 'js/ai-chat-bedrock-voice-proxy.js', array( 'jquery', $this->plugin_name, $this->plugin_name . '-nova-sonic-proxy' ), $this->version, true );
 			
 			// 传递语音设置到前端
 			$voice_id = isset( $options['voice_id'] ) ? $options['voice_id'] : 'alloy';
 			$sample_rate = isset( $options['speech_sample_rate'] ) ? intval( $options['speech_sample_rate'] ) : 24000;
+			$system_prompt = isset( $options['system_prompt'] ) ? $options['system_prompt'] : 'You are a helpful assistant.';
 			
-			wp_localize_script( 'ai-chat-bedrock-voice', 'aiChatBedrockVoiceParams', array(
+			// 获取完整的REST API URL，包含WordPress路径和index.php
+			$site_url = site_url();
+			$rest_url = $site_url . '/index.php/wp-json/ai-chat-bedrock/v1';
+			
+			// 传递参数到代理语音脚本
+			wp_localize_script( 'ai-chat-bedrock-voice-proxy', 'aiChatBedrockVoiceParams', array(
 				'ajax_url' => admin_url( 'admin-ajax.php' ),
+				'rest_url' => $rest_url, // 使用完整的REST API URL
 				'nonce' => wp_create_nonce( 'ai_chat_bedrock_voice_nonce' ),
 				'voice_enabled' => $enable_voice,
 				'voice_id' => $voice_id,
 				'sample_rate' => $sample_rate,
+				'system_prompt' => $system_prompt, // 添加系统提示
 				'i18n' => array(
 					'start_recording' => __( '开始录音', 'ai-chat-for-amazon-bedrock' ),
 					'stop_recording' => __( '停止录音', 'ai-chat-for-amazon-bedrock' ),
 					'listening' => __( '正在听...', 'ai-chat-for-amazon-bedrock' ),
 					'processing' => __( '处理中...', 'ai-chat-for-amazon-bedrock' ),
 					'error_microphone' => __( '无法访问麦克风', 'ai-chat-for-amazon-bedrock' ),
-					'error_speech' => __( '语音识别失败', 'ai-chat-for-amazon-bedrock' )
+					'error_speech' => __( '语音识别失败', 'ai-chat-for-amazon-bedrock' ),
+					'proxy_mode' => __( '使用服务器代理模式', 'ai-chat-for-amazon-bedrock' )
 				)
 			) );
 		}

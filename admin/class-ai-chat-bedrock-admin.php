@@ -158,7 +158,7 @@ class AI_Chat_Bedrock_Admin {
 			
 			// 加载语音交互脚本和样式
 			if ($enable_voice) {
-				wp_enqueue_script( 'ai-chat-bedrock-voice', plugin_dir_url( dirname( __FILE__ ) ) . 'public/js/ai-chat-bedrock-voice.js', array( 'jquery', $this->plugin_name . '-public' ), $this->version, true );
+				
 				wp_enqueue_style( 'ai-chat-bedrock-voice', plugin_dir_url( dirname( __FILE__ ) ) . 'public/css/ai-chat-bedrock-voice.css', array(), $this->version, 'all' );
 				
 				// 传递语音设置到前端
@@ -218,7 +218,7 @@ class AI_Chat_Bedrock_Admin {
 	 *
 	 * @since    1.0.0
 	 */
-	public function add_plugin_admin_menu() {
+	public function add_admin_menu() {
 		add_menu_page(
 			__( 'AI Chat for Amazon Bedrock', 'ai-chat-for-amazon-bedrock' ),
 			__( 'AI Chat Bedrock', 'ai-chat-for-amazon-bedrock' ),

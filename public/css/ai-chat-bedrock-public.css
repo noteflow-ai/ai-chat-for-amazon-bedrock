@@ -150,33 +150,32 @@
     flex-direction: column;
 }
 
+.ai-chat-bedrock-input-container {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: nowrap;
+    position: relative;
+    margin-bottom: 10px;
+}
+
 .ai-chat-bedrock-textarea {
+    flex: 1;
     border: 1px solid #ddd;
     border-radius: 4px;
     padding: 10px;
-    margin-bottom: 10px;
     resize: none;
     font-family: inherit;
     font-size: 14px;
 }
 
-.ai-chat-bedrock-textarea:focus {
-    outline: none;
-    border-color: #ff9900;
-    box-shadow: 0 0 0 1px #ff9900;
-}
-
-.ai-chat-bedrock-buttons {
-    display: flex;
-    justify-content: space-between;
-}
-
-.ai-chat-bedrock-submit {
+.ai-chat-bedrock-send-button {
+    margin-left: 10px;
+    height: 40px;
     background-color: #ff9900 !important;
     border-color: #ff9900 !important;
 }
 
-.ai-chat-bedrock-submit:hover {
+.ai-chat-bedrock-send-button:hover {
     background-color: #e88a00 !important;
     border-color: #e88a00 !important;
 }

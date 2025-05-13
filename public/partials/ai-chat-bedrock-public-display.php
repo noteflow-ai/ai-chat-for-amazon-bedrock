@@ -41,10 +41,12 @@ if ( ! defined( 'ABSPATH' ) ) {
     
     <div class="ai-chat-bedrock-input">
         <form class="ai-chat-bedrock-form" onsubmit="return false;">
-            <textarea class="ai-chat-bedrock-textarea" placeholder="<?php echo esc_attr( $atts['placeholder'] ); ?>" rows="3"></textarea>
+            <div class="ai-chat-bedrock-input-container">
+                <textarea class="ai-chat-bedrock-textarea" placeholder="<?php echo esc_attr( $atts['placeholder'] ); ?>" rows="3"></textarea>
+                <button type="button" class="ai-chat-bedrock-send-button button button-primary"><?php echo esc_html( $atts['button_text'] ); ?></button>
+            </div>
             <div class="ai-chat-bedrock-buttons">
                 <button type="button" class="ai-chat-bedrock-clear button button-secondary"><?php echo esc_html( $atts['clear_text'] ); ?></button>
-                <button type="button" class="ai-chat-bedrock-submit button button-primary"><?php echo esc_html( $atts['button_text'] ); ?></button>
             </div>
         </form>
     </div>

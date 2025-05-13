@@ -53,9 +53,9 @@ class AI_Chat_Bedrock {
 		if ( defined( 'AI_CHAT_BEDROCK_VERSION' ) ) {
 			$this->version = AI_CHAT_BEDROCK_VERSION;
 		} else {
-			$this->version = '1.0.7';
+			$this->version = '1.0.0';
 		}
-		$this->plugin_name = 'ai-chat-for-amazon-bedrock';
+		$this->plugin_name = 'ai-chat-bedrock';
 
 		$this->load_dependencies();
 		$this->set_locale();
@@ -63,38 +63,6 @@ class AI_Chat_Bedrock {
 		$this->define_public_hooks();
 		$this->define_mcp_hooks();
 		$this->init_wp_mcp_server();
-		
-		// Register AJAX handlers
-		add_action('wp_ajax_ai_chat_bedrock_save_option', array($this, 'ajax_save_option'));
-	}
-	
-	/**
-	 * AJAX handler for saving a single option.
-	 *
-	 * @since    1.0.7
-	 */
-	public function ajax_save_option() {
-		// Check permissions
-		if (!current_user_can('manage_options')) {
-			wp_send_json_error(array('message' => __('Permission denied', 'ai-chat-for-amazon-bedrock')), 403);
-		}
-
-		// Verify nonce
-		if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'ai_chat_bedrock_nonce')) {
-			wp_send_json_error(array('message' => __('Security check failed', 'ai-chat-for-amazon-bedrock')), 403);
-		}
-
-		// Get option details
-		$option_name = isset($_POST['option_name']) ? sanitize_text_field($_POST['option_name']) : '';
-		$option_value = isset($_POST['option_value']) ? sanitize_text_field($_POST['option_value']) : '';
-
-		if (empty($option_name)) {
-			wp_send_json_error(array('message' => __('Option name is required', 'ai-chat-for-amazon-bedrock')), 400);
-		}
-
-		// Save option
-		update_option($option_name, $option_value);
-		wp_send_json_success(array('message' => __('Option saved successfully', 'ai-chat-for-amazon-bedrock')));
 	}
 
 	/**
@@ -106,10 +74,6 @@ class AI_Chat_Bedrock {
 	 * - AI_Chat_Bedrock_i18n. Defines internationalization functionality.
 	 * - AI_Chat_Bedrock_Admin. Defines all hooks for the admin area.
 	 * - AI_Chat_Bedrock_Public. Defines all hooks for the public side of the site.
-	 * - AI_Chat_Bedrock_AWS. Handles AWS Bedrock API integration.
-	 * - AI_Chat_Bedrock_MCP_Client. Handles MCP client functionality.
-	 * - AI_Chat_Bedrock_MCP_Integration. Integrates MCP client with the plugin.
-	 * - AI_Chat_Bedrock_WP_MCP_Server. WordPress MCP server implementation.
 	 *
 	 * Create an instance of the loader which will be used to register the hooks
 	 * with WordPress.
@@ -141,12 +105,12 @@ class AI_Chat_Bedrock {
 		 * side of the site.
 		 */
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'public/class-ai-chat-bedrock-public.php';
-
+		
 		/**
-		 * The class responsible for AWS Bedrock API integration.
+		 * The class responsible for AWS Bedrock integration.
 		 */
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-ai-chat-bedrock-aws.php';
-
+		
 		/**
 		 * The class responsible for MCP client functionality.
 		 */
@@ -171,6 +135,15 @@ class AI_Chat_Bedrock {
 		 * The class responsible for Nova Sonic streaming functionality.
 		 */
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-ai-chat-bedrock-nova-sonic.php';
+		
+		/**
+		 * The classes responsible for Nova Sonic WebSocket implementation.
+		 */
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-aws-sigv4.php';
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-bedrock-websocket.php';
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-nova-sonic-api.php';
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-bedrock-websocket-proxy.php';
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-nova-sonic-proxy-api.php';
 
 		$this->loader = new AI_Chat_Bedrock_Loader();
 	}
@@ -201,17 +174,16 @@ class AI_Chat_Bedrock {
 
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_styles' );
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts' );
-		$this->loader->add_action( 'admin_menu', $plugin_admin, 'add_plugin_admin_menu' );
+		
+		// Add admin menu
+		$this->loader->add_action( 'admin_menu', $plugin_admin, 'add_admin_menu' );
+		
+		// Register settings
 		$this->loader->add_action( 'admin_init', $plugin_admin, 'register_settings' );
 		
-		// Add this line to inject templates into admin head
-		$this->loader->add_action( 'admin_head', $plugin_admin, 'add_mcp_templates_to_admin_head' );
-		
-		// AJAX handlers
-		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_message', $plugin_admin, 'handle_chat_message' );
-		$this->loader->add_action( 'wp_ajax_nopriv_ai_chat_bedrock_message', $plugin_admin, 'handle_chat_message' );
-		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_clear_history', $plugin_admin, 'clear_chat_history' );
-		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_save_option', $plugin_admin, 'save_option' );
+		// Register AJAX handlers for admin functionality
+		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_admin_test', $plugin_admin, 'handle_admin_test' );
+		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_admin_tool_results', $plugin_admin, 'handle_admin_tool_results' );
 	}
 
 	/**
@@ -240,6 +212,12 @@ class AI_Chat_Bedrock {
 		
 		// Initialize voice interaction
 		$voice_interaction = new AI_Chat_Bedrock_Voice_Interaction();
+		
+		// Initialize Nova Sonic API
+		$plugin_nova_sonic_api = new AI_Chat_Bedrock_Nova_Sonic_API();
+		
+		// Initialize Nova Sonic Proxy API - 确保代理API被初始化
+		$plugin_nova_sonic_proxy_api = new AI_Chat_Bedrock_Nova_Sonic_Proxy_API();
 		
 		// Register AJAX handlers for voice interaction
 		$this->loader->add_action( 'wp_ajax_ai_chat_bedrock_bidirectional_voice_chat', $voice_interaction, 'handle_bidirectional_voice_chat' );
